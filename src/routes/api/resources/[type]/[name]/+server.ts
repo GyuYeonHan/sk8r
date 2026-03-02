@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { K8sApiServiceSimple } from '$lib/services/k8sApiSimple';
 import { credentialErrorResponse } from '$lib/server/k8sAuth';
 import { resolveK8sCredentials } from '$lib/server/clusterContext';
+import { requirePermission } from '$lib/server/auth/guards';
 
 export const GET: RequestHandler = async (event) => {
 	const resolved = await resolveK8sCredentials(event);
@@ -33,6 +34,9 @@ export const GET: RequestHandler = async (event) => {
 };
 
 export const DELETE: RequestHandler = async (event) => {
+	const permissionError = requirePermission(event, 'resource:write');
+	if (permissionError) return permissionError;
+
 	const resolved = await resolveK8sCredentials(event);
 	if ('error' in resolved) {
 		return credentialErrorResponse(resolved.error);
@@ -51,7 +55,7 @@ export const DELETE: RequestHandler = async (event) => {
 			credentials.skipTLSVerify
 		);
 		await k8sApi.deleteResource(type, name, namespace);
-		
+
 		return json({ success: true });
 	} catch (error) {
 		console.error('Failed to delete resource:', error);

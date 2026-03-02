@@ -118,9 +118,10 @@
 				// Add to events array, maintaining max limit
 				events = [...events, event].slice(-maxEvents);
 
-				if (autoScroll && eventsContainer) {
+				const container = eventsContainer;
+				if (autoScroll && container) {
 					requestAnimationFrame(() => {
-						eventsContainer.scrollTop = eventsContainer.scrollHeight;
+						container.scrollTop = container.scrollHeight;
 					});
 				}
 			} catch (err) {
@@ -433,4 +434,3 @@
 		</div>
 	{/if}
 </div>
-

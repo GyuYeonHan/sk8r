@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
-	import { ArrowLeft, Edit, Trash2, ExternalLink, ScrollText } from 'lucide-svelte';
+	import { ArrowLeft, Edit, Trash2, ScrollText } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import type { K8sResource } from '$lib/types/k8s';
 	import PodLogsViewer from '$lib/components/PodLogsViewer.svelte';
@@ -32,6 +32,7 @@
 	let clientResource = $state<K8sResource | null>(null);
 	let clientError = $state<string | null>(null);
 	let isLoading = $state(false);
+	let canManageResources = $derived(Boolean($page.data.isAdmin));
 	
 	// Use client resource if loaded, otherwise fall back to server data
 	let resource = $derived(clientResource || data.resource);
@@ -122,6 +123,11 @@
 	}
 
 	async function handleEdit() {
+		if (!canManageResources) {
+			alert('Administrator privileges are required.');
+			return;
+		}
+
 		if (!resource) return;
 		
 		// Convert resource to YAML for editing
@@ -150,6 +156,11 @@
 	}
 
 	async function handleDelete() {
+		if (!canManageResources) {
+			alert('Administrator privileges are required.');
+			return;
+		}
+
 		if (!resource) return;
 		
 		if (confirm(`Are you sure you want to delete ${data.name}?`)) {
@@ -171,7 +182,7 @@
 					goBack();
 				} else {
 					const result = await response.json();
-					alert(`Failed to delete: ${result.error}`);
+					alert(`Failed to delete: ${result.message || result.error || 'Unknown error'}`);
 				}
 			} catch (error) {
 				console.error('Failed to delete resource:', error);
@@ -258,20 +269,26 @@
 					Logs
 				</button>
 			{/if}
-			<button
-				onclick={handleEdit}
-				class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-			>
-				<Edit size={16} />
-				Edit
-			</button>
-			<button
-				onclick={handleDelete}
-				class="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-			>
-				<Trash2 size={16} />
-				Delete
-			</button>
+			{#if canManageResources}
+				<button
+					onclick={handleEdit}
+					class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+				>
+					<Edit size={16} />
+					Edit
+				</button>
+				<button
+					onclick={handleDelete}
+					class="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+				>
+					<Trash2 size={16} />
+					Delete
+				</button>
+			{:else}
+				<span class="text-xs px-3 py-2 rounded-md bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-slate-300">
+					Read-only
+				</span>
+			{/if}
 		</div>
 	</div>
 
@@ -388,9 +405,8 @@
 {/if}
 
 <!-- Resource Editor Modal (lazy loaded) -->
-{#if ResourceCreator}
-	<svelte:component 
-		this={ResourceCreator}
+{#if ResourceCreator && canManageResources}
+	<ResourceCreator 
 		isOpen={showEditor}
 		onClose={() => showEditor = false}
 		onSuccess={handleEditSuccess}

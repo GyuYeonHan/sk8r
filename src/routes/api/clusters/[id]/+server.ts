@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { clusterService } from '$lib/server/services/clusterService';
 import { getCurrentClusterId, setCurrentClusterId } from '$lib/server/clusterContext';
+import { requireAdmin } from '$lib/server/auth/guards';
 
 function extractErrorStatus(error: any): number {
 	return error?.statusCode || error?.response?.statusCode || 400;
@@ -15,16 +16,17 @@ function extractErrorMessage(error: any): string {
 	return 'Unknown error';
 }
 
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async (event) => {
+	const adminError = requireAdmin(event);
+	if (adminError) return adminError;
+
+	const { params, request } = event;
 	try {
 		const body = await request.json();
 		const { server, token, skipTLSVerify = true } = body || {};
 
 		if (!server || !token) {
-			return json(
-				{ error: 'Server URL and token are required' },
-				{ status: 400 }
-			);
+			return json({ error: 'Server URL and token are required' }, { status: 400 });
 		}
 
 		const updated = await clusterService.updateCluster(params.id, {
@@ -47,6 +49,9 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 };
 
 export const DELETE: RequestHandler = async (event) => {
+	const adminError = requireAdmin(event);
+	if (adminError) return adminError;
+
 	try {
 		const { id } = event.params;
 		await clusterService.deleteCluster(id);

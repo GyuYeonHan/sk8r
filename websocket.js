@@ -7,6 +7,7 @@ import * as stream from 'stream';
 
 const KEY_BYTES = 32;
 const CLUSTER_COOKIE_NAME = 'k8s_cluster_id';
+const AUTH_SESSION_COOKIE_NAME = 'sk8r_auth_session';
 
 const prisma = new PrismaClient({
 	log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error']
@@ -16,6 +17,7 @@ const prisma = new PrismaClient({
 const activeConnections = new Map();
 
 let cachedKey = null;
+let cachedSessionKey = null;
 
 function readEncryptionKey() {
 	if (cachedKey) {
@@ -24,7 +26,9 @@ function readEncryptionKey() {
 
 	const raw = process.env.APP_ENCRYPTION_KEY;
 	if (!raw) {
-		throw new Error('APP_ENCRYPTION_KEY is required. Set a 32-byte base64 key in environment variables.');
+		throw new Error(
+			'APP_ENCRYPTION_KEY is required. Set a 32-byte base64 key in environment variables.'
+		);
 	}
 
 	const key = Buffer.from(raw, 'base64');
@@ -49,6 +53,52 @@ function decryptText(ciphertext, iv, tag) {
 	return decrypted.toString('utf8');
 }
 
+function readSessionKey() {
+	if (cachedSessionKey) {
+		return cachedSessionKey;
+	}
+
+	const raw = process.env.AUTH_SESSION_SECRET || process.env.APP_ENCRYPTION_KEY;
+	if (!raw) {
+		throw new Error('AUTH_SESSION_SECRET (or APP_ENCRYPTION_KEY fallback) is required.');
+	}
+
+	const key = Buffer.from(raw, 'base64');
+	if (key.length !== KEY_BYTES) {
+		throw new Error('AUTH_SESSION_SECRET must decode to exactly 32 bytes.');
+	}
+
+	cachedSessionKey = key;
+	return key;
+}
+
+function decryptAuthSession(cookieValue) {
+	try {
+		const key = readSessionKey();
+		const serializedPayload = Buffer.from(cookieValue, 'base64url').toString('utf8');
+		const payload = JSON.parse(serializedPayload);
+		if (!payload.iv || !payload.tag || !payload.ciphertext) {
+			return null;
+		}
+
+		const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'base64'));
+		decipher.setAuthTag(Buffer.from(payload.tag, 'base64'));
+		const decrypted = Buffer.concat([
+			decipher.update(Buffer.from(payload.ciphertext, 'base64')),
+			decipher.final()
+		]);
+		const session = JSON.parse(decrypted.toString('utf8'));
+		const now = Math.floor(Date.now() / 1000);
+		if (!session || typeof session !== 'object' || session.expiresAt <= now) {
+			return null;
+		}
+
+		return session;
+	} catch {
+		return null;
+	}
+}
+
 function getClusterIdFromCookieHeader(cookieHeader) {
 	if (!cookieHeader) return null;
 
@@ -57,6 +107,19 @@ function getClusterIdFromCookieHeader(cookieHeader) {
 		const part = rawPart.trim();
 		if (!part.startsWith(`${CLUSTER_COOKIE_NAME}=`)) continue;
 		const value = part.slice(CLUSTER_COOKIE_NAME.length + 1).trim();
+		return decodeURIComponent(value);
+	}
+
+	return null;
+}
+
+function getCookieValue(cookieHeader, name) {
+	if (!cookieHeader) return null;
+
+	for (const rawPart of cookieHeader.split(';')) {
+		const part = rawPart.trim();
+		if (!part.startsWith(`${name}=`)) continue;
+		const value = part.slice(name.length + 1).trim();
 		return decodeURIComponent(value);
 	}
 
@@ -136,6 +199,22 @@ async function handleConnection(ws, request) {
 			return;
 		}
 
+		const cookieHeader = Array.isArray(request.headers.cookie)
+			? request.headers.cookie.join('; ')
+			: request.headers.cookie;
+		const sessionCookie = getCookieValue(cookieHeader, AUTH_SESSION_COOKIE_NAME);
+		const authSession = sessionCookie ? decryptAuthSession(sessionCookie) : null;
+		if (!authSession) {
+			ws.send('\x1b[31mError: Authentication required\x1b[0m\r\n');
+			ws.close(1008, 'Authentication required');
+			return;
+		}
+		if (!Array.isArray(authSession.permissions) || !authSession.permissions.includes('pod:exec')) {
+			ws.send('\x1b[31mError: Admin permission required for pod exec\x1b[0m\r\n');
+			ws.close(1008, 'Admin permission required');
+			return;
+		}
+
 		const resolved = await resolveK8sCredentials(request);
 		if ('error' in resolved) {
 			const message = credentialResolveErrorMessage(resolved.error);
@@ -176,11 +255,7 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 
 	console.log(`[WebSocket] New exec connection: ${connectionId}`);
 
-	const kc = createKubeConfig(
-		credentials.server,
-		credentials.token,
-		credentials.skipTLSVerify
-	);
+	const kc = createKubeConfig(credentials.server, credentials.token, credentials.skipTLSVerify);
 	const exec = new Exec(kc);
 
 	// Track K8s connection for cleanup
@@ -259,7 +334,9 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 		});
 
 		// Send connection message
-		sendToClient(`\x1b[32mConnecting to ${podName}${container ? `/${container}` : ''}...\x1b[0m\r\n`);
+		sendToClient(
+			`\x1b[32mConnecting to ${podName}${container ? `/${container}` : ''}...\x1b[0m\r\n`
+		);
 
 		// Try different shells
 		const shellCommands =
@@ -276,23 +353,24 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 				k8sConnection.stdin = stdinStream;
 
 				await new Promise((resolve, reject) => {
-					exec.exec(
-						namespace,
-						podName,
-						container || '',
-						[shell],
-						stdout,
-						stderr,
-						stdinStream,
-						true, // tty
-						(status) => {
-							console.log(`[WebSocket] Exec completed for ${connectionId}:`, status);
-							if (ws.readyState === WebSocket.OPEN) {
-								sendToClient('\r\n\x1b[33m[Session ended]\x1b[0m\r\n');
-								ws.close(1000, 'Session ended');
+					exec
+						.exec(
+							namespace,
+							podName,
+							container || '',
+							[shell],
+							stdout,
+							stderr,
+							stdinStream,
+							true, // tty
+							(status) => {
+								console.log(`[WebSocket] Exec completed for ${connectionId}:`, status);
+								if (ws.readyState === WebSocket.OPEN) {
+									sendToClient('\r\n\x1b[33m[Session ended]\x1b[0m\r\n');
+									ws.close(1000, 'Session ended');
+								}
 							}
-						}
-					)
+						)
 						.then((execWebSocket) => {
 							console.log(`[WebSocket] Exec started successfully with ${shell}`);
 

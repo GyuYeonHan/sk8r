@@ -227,8 +227,6 @@
 					class="absolute inset-0 w-full h-full p-3 bg-transparent text-transparent caret-white resize-none outline-none font-mono text-sm leading-6"
 					spellcheck="false"
 					autocomplete="off"
-					autocorrect="off"
-					autocapitalize="off"
 				></textarea>
 			{/if}
 		</div>
@@ -282,4 +280,3 @@
 		height: 0;
 	}
 </style>
-

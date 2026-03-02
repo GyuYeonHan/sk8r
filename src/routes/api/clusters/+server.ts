@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { clusterService } from '$lib/server/services/clusterService';
 import { getCurrentClusterId } from '$lib/server/clusterContext';
+import { requireAdmin } from '$lib/server/auth/guards';
 
 function extractErrorStatus(error: any): number {
 	return error?.statusCode || error?.response?.statusCode || 400;
@@ -36,16 +37,17 @@ export const GET: RequestHandler = async (event) => {
 	}
 };
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const adminError = requireAdmin(event);
+	if (adminError) return adminError;
+
+	const { request } = event;
 	try {
 		const body = await request.json();
 		const { server, token, skipTLSVerify = true } = body || {};
 
 		if (!server || !token) {
-			return json(
-				{ error: 'Server URL and token are required' },
-				{ status: 400 }
-			);
+			return json({ error: 'Server URL and token are required' }, { status: 400 });
 		}
 
 		const created = await clusterService.createCluster({

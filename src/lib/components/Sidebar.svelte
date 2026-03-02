@@ -10,6 +10,14 @@
 	import { clusterStore, type CustomCluster } from '$lib/stores/cluster';
 	import { namespaceStore } from '$lib/stores/namespaces';
 	import { resourceCreator } from '$lib/stores/resourceCreator';
+	import type { AuthUser } from '$lib/types/auth';
+
+	interface Props {
+		isAdmin?: boolean;
+		user?: AuthUser | null;
+	}
+
+	let { isAdmin = false, user = null }: Props = $props();
 
 	// Design patterns configuration
 	const designPatterns = [
@@ -66,6 +74,11 @@
 		navigation.selectResource(resource);
 	}
 
+	function openResourceCreator() {
+		if (!isAdmin) return;
+		resourceCreator.open();
+	}
+
 	async function handleClusterChange(event: Event) {
 		const select = event.target as HTMLSelectElement;
 		const newContextOrId = select.value;
@@ -93,6 +106,7 @@
 	}
 
 	function openAddClusterModal() {
+		if (!isAdmin) return;
 		editingCluster = null;
 		clusterServer = '';
 		clusterToken = '';
@@ -102,6 +116,7 @@
 	}
 
 	function openEditClusterModal(cluster: CustomCluster) {
+		if (!isAdmin) return;
 		editingCluster = cluster;
 		clusterServer = cluster.server;
 		clusterToken = '';
@@ -120,6 +135,7 @@
 	}
 
 	async function deleteCluster(cluster: CustomCluster) {
+		if (!isAdmin) return;
 		const isCurrentCluster = $clusterStore.currentCustomClusterId === cluster.id;
 		const message = isCurrentCluster 
 			? `Are you sure you want to delete "${cluster.name}"? This is your current cluster and will require selecting another cluster.`
@@ -193,6 +209,11 @@
 	}
 
 	async function saveCluster() {
+		if (!isAdmin) {
+			clusterModalError = 'Administrator privileges are required';
+			return;
+		}
+
 		if (!clusterServer || !clusterToken) {
 			clusterModalError = 'Server address and token are required';
 			return;
@@ -262,6 +283,12 @@
 			</h1>
 			<p class="text-sm text-gray-400 mt-1">Kubernetes Management</p>
 		</a>
+
+		{#if user}
+			<div class="mt-2 text-xs text-gray-400">
+				Signed in as <span class="text-gray-200 font-medium">{user.username}</span>
+			</div>
+		{/if}
 		
 		<!-- Search hint -->
 		<div class="mt-3 text-xs text-gray-500 flex items-center gap-2">
@@ -275,14 +302,20 @@
 
 		<!-- Create Resource Button (bottom-aligned) -->
 		<div class="pb-4 pt-2">
-			<button
-				onclick={() => resourceCreator.open()}
-				class="w-full flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-				title="Create Resource (Ctrl+N)"
-			>
-				<Plus size={18} />
-				<span class="text-sm font-medium">Create Resource</span>
-			</button>
+			{#if isAdmin}
+				<button
+					onclick={openResourceCreator}
+					class="w-full flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+					title="Create Resource (Ctrl+N)"
+				>
+					<Plus size={18} />
+					<span class="text-sm font-medium">Create Resource</span>
+				</button>
+			{:else}
+				<div class="w-full px-3 py-2 rounded-md bg-gray-800 border border-gray-700 text-xs text-gray-400">
+					Read-only mode
+				</div>
+			{/if}
 		</div>
 
 		{#each navigationConfig.sections as section (section.key)}
@@ -375,13 +408,15 @@
 					>
 						<RefreshCw size={12} class="text-gray-500 hover:text-gray-300 {$clusterStore.loading ? 'animate-spin' : ''}" />
 					</button>
-					<button
-						onclick={openAddClusterModal}
-						class="p-1 hover:bg-gray-700 rounded transition-colors"
-						title="Add cluster"
-					>
-						<Plus size={12} class="text-gray-500 hover:text-gray-300" />
-					</button>
+					{#if isAdmin}
+						<button
+							onclick={openAddClusterModal}
+							class="p-1 hover:bg-gray-700 rounded transition-colors"
+							title="Add cluster"
+						>
+							<Plus size={12} class="text-gray-500 hover:text-gray-300" />
+						</button>
+					{/if}
 				</div>
 			</div>
 			
@@ -415,7 +450,7 @@
 						</div>
 					{/if}
 					<!-- Edit/Delete buttons for custom clusters -->
-					{#if $clusterStore.customClusters.length > 0}
+					{#if isAdmin && $clusterStore.customClusters.length > 0}
 						<div class="flex flex-wrap gap-1 mt-1">
 							{#each $clusterStore.customClusters as customCluster (customCluster.id)}
 								<div class="flex items-center bg-gray-800 border border-gray-600 rounded overflow-hidden">
@@ -448,13 +483,15 @@
 				<div class="text-xs text-gray-500 py-1 mb-1">
 					No clusters found
 				</div>
-				<button
-					onclick={openAddClusterModal}
-					class="w-full text-xs px-2 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded transition-colors flex items-center justify-center gap-1"
-				>
-					<Plus size={12} />
-					Add Cluster
-				</button>
+				{#if isAdmin}
+					<button
+						onclick={openAddClusterModal}
+						class="w-full text-xs px-2 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded transition-colors flex items-center justify-center gap-1"
+					>
+						<Plus size={12} />
+						Add Cluster
+					</button>
+				{/if}
 			{/if}
 		</div>
 		

@@ -16,26 +16,47 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
       containers:
-      - name: sk8tes
-        image: mvkdev/sk8tes:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 3000
-        env:
-        - name: DATABASE_URL
-          value: "file:./dev.db"
-        - name: APP_ENCRYPTION_KEY
-          valueFrom:
-            secretKeyRef:
-              name: sk8tes-secrets
-              key: appEncryptionKey
-        - name: PROMETHEUS_URL
-          value: "http://kube-prometheus-stack-prometheus.monitoring:9090"
+        - name: sk8tes
+          image: mvkdev/sk8tes:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DATABASE_URL
+              value: 'file:./dev.db'
+            - name: APP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sk8tes-secrets
+                  key: appEncryptionKey
+            - name: KEYCLOAK_ISSUER_URL
+              value: 'https://keycloak.example.com/realms/sk8r'
+            - name: KEYCLOAK_CLIENT_ID
+              value: 'sk8r'
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sk8tes-secrets
+                  key: keycloakClientSecret
+            - name: KEYCLOAK_ADMIN_ROLE
+              value: 'admin'
+            - name: AUTH_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sk8tes-secrets
+                  key: authSessionSecret
+                  optional: true
+            - name: AUTH_SESSION_MAX_AGE_SECONDS
+              value: '28800'
+            - name: APP_BASE_URL
+              value: 'https://sk8r.example.com'
+            - name: PROMETHEUS_URL
+              value: 'http://kube-prometheus-stack-prometheus.monitoring:9090'
 
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - ALL
-          seccompProfile:
-            type: RuntimeDefault
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault

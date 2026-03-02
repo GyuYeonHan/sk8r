@@ -4,6 +4,7 @@ import { KubernetesObjectApi } from '@kubernetes/client-node';
 import yaml from 'js-yaml';
 import { credentialErrorResponse, createKubeConfig } from '$lib/server/k8sAuth';
 import { resolveK8sCredentials } from '$lib/server/clusterContext';
+import { requirePermission } from '$lib/server/auth/guards';
 
 interface K8sManifest {
 	apiVersion: string;
@@ -18,7 +19,7 @@ interface K8sManifest {
 
 function parseYamlManifests(yamlContent: string): K8sManifest[] {
 	const documents = yaml.loadAll(yamlContent) as K8sManifest[];
-	return documents.filter(doc => doc !== null && doc !== undefined);
+	return documents.filter((doc) => doc !== null && doc !== undefined);
 }
 
 function validateManifest(manifest: K8sManifest): { valid: boolean; error?: string } {
@@ -36,6 +37,9 @@ function validateManifest(manifest: K8sManifest): { valid: boolean; error?: stri
 
 // POST - Create new resource(s)
 export const POST: RequestHandler = async (event) => {
+	const permissionError = requirePermission(event, 'resource:write');
+	if (permissionError) return permissionError;
+
 	const resolved = await resolveK8sCredentials(event);
 	if ('error' in resolved) {
 		return credentialErrorResponse(resolved.error);
@@ -83,7 +87,7 @@ export const POST: RequestHandler = async (event) => {
 				success: true,
 				dryRun: true,
 				message: `Validated ${manifests.length} resource(s)`,
-				resources: manifests.map(m => ({
+				resources: manifests.map((m) => ({
 					kind: m.kind,
 					name: m.metadata.name,
 					namespace: m.metadata.namespace || 'default'
@@ -124,9 +128,9 @@ export const POST: RequestHandler = async (event) => {
 
 		if (errors.length > 0 && results.length === 0) {
 			return json(
-				{ 
-					error: 'Failed to create resources', 
-					details: errors 
+				{
+					error: 'Failed to create resources',
+					details: errors
 				},
 				{ status: 500 }
 			);
@@ -148,6 +152,9 @@ export const POST: RequestHandler = async (event) => {
 
 // PUT - Update existing resource
 export const PUT: RequestHandler = async (event) => {
+	const permissionError = requirePermission(event, 'resource:write');
+	if (permissionError) return permissionError;
+
 	const resolved = await resolveK8sCredentials(event);
 	if ('error' in resolved) {
 		return credentialErrorResponse(resolved.error);
@@ -215,8 +222,8 @@ export const PUT: RequestHandler = async (event) => {
 			}
 
 			// First, read the current resource to get resourceVersion
-			const current = await client.read(manifest as any) as any;
-			
+			const current = (await client.read(manifest as any)) as any;
+
 			// Preserve resourceVersion for optimistic concurrency
 			if (current?.metadata?.resourceVersion) {
 				manifest.metadata.resourceVersion = current.metadata.resourceVersion as string;
@@ -252,6 +259,9 @@ export const PUT: RequestHandler = async (event) => {
 
 // DELETE - Delete resource
 export const DELETE: RequestHandler = async (event) => {
+	const permissionError = requirePermission(event, 'resource:write');
+	if (permissionError) return permissionError;
+
 	const resolved = await resolveK8sCredentials(event);
 	if ('error' in resolved) {
 		return credentialErrorResponse(resolved.error);
@@ -264,10 +274,7 @@ export const DELETE: RequestHandler = async (event) => {
 		const { kind, apiVersion, name, namespace = 'default' } = body;
 
 		if (!kind || !apiVersion || !name) {
-			return json(
-				{ error: 'kind, apiVersion, and name are required' },
-				{ status: 400 }
-			);
+			return json({ error: 'kind, apiVersion, and name are required' }, { status: 400 });
 		}
 
 		const kc = createKubeConfig(credentials.server, credentials.token, credentials.skipTLSVerify);

@@ -1,51 +1,69 @@
 <script lang="ts">
-  import type { JsonValue } from '$lib/types/k8s';
-  import { quintOut } from 'svelte/easing';
-  import { slide } from 'svelte/transition';
+	import type { JsonValue } from '$lib/types/k8s';
+	import { quintOut } from 'svelte/easing';
+	import { slide } from 'svelte/transition';
 
-  export let data: JsonValue;
-  export let level = 0;
+	type JsonObject = { [key: string]: JsonValue };
 
-  let collapsed = level > 1;
+	export let data: JsonValue;
+	export let level = 0;
 
-  function toggle() {
-    collapsed = !collapsed;
-  }
+	let collapsed = level > 1;
+	let objectEntries: [string, JsonValue][] = [];
+	let arrayEntries: [string, JsonValue][] = [];
+	let entries: [string, JsonValue][] = [];
+	let summary = '';
 
-  $: isObject = typeof data === 'object' && data !== null && !Array.isArray(data);
-  $: isArray = Array.isArray(data);
-  $: isPrimitive = !isObject && !isArray;
-  $: entries = isObject ? Object.entries(data) : isArray ? data.entries() : [];
-  $: bracket_open = isArray ? '[' : '{';
-  $: bracket_close = isArray ? ']' : '}';
-  $: summary = isArray ? `Array(${data.length})` : `Object(${Object.keys(data).length})`;
+	function toggle() {
+		collapsed = !collapsed;
+	}
+
+	function isJsonObject(value: JsonValue): value is JsonObject {
+		return typeof value === 'object' && value !== null && !Array.isArray(value);
+	}
+
+	$: isObject = isJsonObject(data);
+	$: isArray = Array.isArray(data);
+	$: isPrimitive = !isObject && !isArray;
+	$: objectEntries = isObject ? (Object.entries(data as JsonObject) as [string, JsonValue][]) : [];
+	$: arrayEntries = isArray
+		? (data as JsonValue[]).map((value: JsonValue, index: number) => [String(index), value])
+		: [];
+	$: entries = isObject ? objectEntries : arrayEntries;
+	$: bracket_open = isArray ? '[' : '{';
+	$: bracket_close = isArray ? ']' : '}';
+	$: summary = isArray
+		? `Array(${(data as JsonValue[]).length})`
+		: isObject
+			? `Object(${Object.keys(data as JsonObject).length})`
+			: '';
 </script>
 
 <div class="json-node" style="--level: {level}">
-  {#if isPrimitive}
-    <span class="primitive {typeof data}">{JSON.stringify(data)}</span>
-  {:else if entries.length > 0}
-    <button on:click={toggle} class="toggle" aria-expanded={!collapsed}>
-      {bracket_open}
-      {#if collapsed}
-        <span class="summary">...{summary}...</span>
-        {bracket_close}
-      {/if}
-    </button>
-    {#if !collapsed}
-      <div class="branch" transition:slide={{ duration: 300, easing: quintOut }}>
-        {#each entries as [key, value]}
-          <div class="entry">
-            <span class="key">{key}:</span>
-            <svelte:self data={value} level={level + 1} />
-          </div>
-        {/each}
-      </div>
-      <div class="closer">{bracket_close}</div>
-    {/if}
-  {:else}
-    <span>{bracket_open}{bracket_close}</span>
-  {/if}
+	{#if isPrimitive}
+		<span class="primitive {typeof data}">{JSON.stringify(data)}</span>
+	{:else if entries.length > 0}
+		<button onclick={toggle} class="toggle" aria-expanded={!collapsed}>
+			{bracket_open}
+			{#if collapsed}
+				<span class="summary">...{summary}...</span>
+				{bracket_close}
+			{/if}
+		</button>
+		{#if !collapsed}
+			<div class="branch" transition:slide={{ duration: 300, easing: quintOut }}>
+				{#each entries as [key, value] (`${level}-${key}`)}
+					<div class="entry">
+						<span class="key">{key}:</span>
+						<svelte:self data={value} level={level + 1} />
+					</div>
+				{/each}
+			</div>
+			<div class="closer">{bracket_close}</div>
+		{/if}
+	{:else}
+		<span>{bracket_open}{bracket_close}</span>
+	{/if}
 </div>
 
 <style>

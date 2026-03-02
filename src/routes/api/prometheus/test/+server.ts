@@ -1,11 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { PrometheusService } from '$lib/services/prometheusService';
+import { requirePermission } from '$lib/server/auth/guards';
 
 // A simple query to check if Prometheus is up and reporting targets.
 const PROMETHEUS_HEALTH_CHECK_QUERY = 'up';
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	const permissionError = requirePermission(event, 'test:access');
+	if (permissionError) return permissionError;
+
 	try {
 		const prometheusService = new PrometheusService();
 
@@ -19,14 +23,13 @@ export const GET: RequestHandler = async () => {
 			query: PROMETHEUS_HEALTH_CHECK_QUERY,
 			response: result
 		});
-
 	} catch (error) {
 		console.error('Prometheus test route failed:', error);
 		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 		return json(
-			{ 
+			{
 				error: `Failed to connect to Prometheus or execute query: ${errorMessage}`,
-				prometheus_url: process.env.PROMETHEUS_URL, // For debugging
+				prometheus_url: process.env.PROMETHEUS_URL // For debugging
 			},
 			{ status: 500 }
 		);

@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import Chart from 'chart.js/auto';
 	import 'chartjs-adapter-date-fns';
+	import type { TooltipItem } from 'chart.js';
 	import type { MetricChartConfig, MetricSeries } from '$lib/types/metricsTypes';
 
 	interface Props {
@@ -13,7 +14,9 @@
 	let { config, data = $bindable(), class: className = '' }: Props = $props();
 
 	let canvas: HTMLCanvasElement;
-	let chart: Chart | null = null;
+	type ChartPoint = { x: Date; y: number };
+	type SupportedChartType = 'line' | 'bar';
+	let chart: Chart<SupportedChartType, ChartPoint[]> | null = null;
 	let isDarkMode = $state(false);
 
 	// Detect dark mode by checking for 'dark' class on document
@@ -118,9 +121,11 @@
 			};
 		});
 
+		const chartType: SupportedChartType = config.type === 'area' ? 'line' : config.type;
+
 		// Chart configuration
 		chart = new Chart(ctx, {
-			type: config.type === 'area' ? 'line' : config.type,
+			type: chartType,
 			data: { datasets },
 			options: {
 				responsive: true,
@@ -152,8 +157,10 @@
 						borderColor: isDarkMode ? 'rgb(71, 85, 105)' : 'transparent', // slate-600
 						borderWidth: isDarkMode ? 1 : 0,
 						callbacks: {
-							label: (context) => {
-								const value = formatValue(context.parsed.y, config.unit);
+							label: (context: TooltipItem<SupportedChartType>) => {
+								const parsedY =
+									typeof context.parsed.y === 'number' ? context.parsed.y : 0;
+								const value = formatValue(parsedY, config.unit);
 								return `${context.dataset.label}: ${value}`;
 							}
 						}

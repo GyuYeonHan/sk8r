@@ -5,6 +5,8 @@ import { Exec } from '@kubernetes/client-node';
 import * as stream from 'stream';
 import { createKubeConfig, type K8sCredentials } from './k8sAuth';
 import { resolveK8sCredentialsFromCookieHeader } from './clusterContext';
+import { readAuthSessionFromCookieHeader } from './auth/session';
+import { hasPermission } from './auth/permissions';
 
 // Store active connections for cleanup
 const activeConnections = new Map<string, { ws: WebSocket; cleanup: () => void }>();
@@ -47,6 +49,18 @@ async function handleConnection(ws: WebSocket, request: IncomingMessage): Promis
 		const cookieHeader = Array.isArray(request.headers.cookie)
 			? request.headers.cookie.join('; ')
 			: request.headers.cookie;
+
+		const authSession = readAuthSessionFromCookieHeader(cookieHeader);
+		if (!authSession) {
+			ws.send('\x1b[31mError: Authentication required\x1b[0m\r\n');
+			ws.close(1008, 'Authentication required');
+			return;
+		}
+		if (!hasPermission(authSession.permissions, 'pod:exec')) {
+			ws.send('\x1b[31mError: Admin permission required for pod exec\x1b[0m\r\n');
+			ws.close(1008, 'Admin permission required');
+			return;
+		}
 
 		const resolved = await resolveK8sCredentialsFromCookieHeader(cookieHeader);
 		if ('error' in resolved) {
@@ -179,7 +193,9 @@ async function handleExecConnection(
 		});
 
 		// Send connection message
-		sendToClient(`\x1b[32mConnecting to ${podName}${container ? `/${container}` : ''}...\x1b[0m\r\n`);
+		sendToClient(
+			`\x1b[32mConnecting to ${podName}${container ? `/${container}` : ''}...\x1b[0m\r\n`
+		);
 
 		// Try different shells
 		const shellCommands =
@@ -196,23 +212,24 @@ async function handleExecConnection(
 				k8sConnection.stdin = stdinStream;
 
 				await new Promise<void>((resolve, reject) => {
-					exec.exec(
-						namespace,
-						podName,
-						container || '',
-						[shell],
-						stdout,
-						stderr,
-						stdinStream,
-						true, // tty
-						(status) => {
-							console.log(`[WebSocket] Exec completed for ${connectionId}:`, status);
-							if (ws.readyState === WebSocket.OPEN) {
-								sendToClient(`\r\n\x1b[33m[Session ended]\x1b[0m\r\n`);
-								ws.close(1000, 'Session ended');
+					exec
+						.exec(
+							namespace,
+							podName,
+							container || '',
+							[shell],
+							stdout,
+							stderr,
+							stdinStream,
+							true, // tty
+							(status) => {
+								console.log(`[WebSocket] Exec completed for ${connectionId}:`, status);
+								if (ws.readyState === WebSocket.OPEN) {
+									sendToClient(`\r\n\x1b[33m[Session ended]\x1b[0m\r\n`);
+									ws.close(1000, 'Session ended');
+								}
 							}
-						}
-					)
+						)
 						.then((execWebSocket) => {
 							console.log(`[WebSocket] Exec started successfully with ${shell}`);
 

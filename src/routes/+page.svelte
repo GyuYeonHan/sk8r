@@ -10,6 +10,7 @@
 	import { goto } from '$app/navigation';
 	import { apiClient } from '$lib/utils/apiClient';
 	import { browser } from '$app/environment';
+	import { page } from '$app/stores';
 	import { dashboardConfig } from '$lib/config/dashboardConfig';
 	import { resourceCreator } from '$lib/stores/resourceCreator';
 	import { clusterStore } from '$lib/stores/cluster';
@@ -43,6 +44,7 @@
 	// Use client resources if loaded, otherwise fall back to server data
 	let resources = $derived(clientResources.length > 0 ? clientResources : data.resources);
 	let error = $derived(clientError || data.error);
+	let canManageResources = $derived(Boolean($page.data.isAdmin));
 	
 	// Load resources client-side
 	async function loadResources() {
@@ -148,6 +150,8 @@
 
 	// Keyboard shortcut for creating resources
 	function handleKeydown(e: KeyboardEvent) {
+		if (!canManageResources) return;
+
 		// Ctrl+N or Cmd+N to open create dialog
 		if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
 			e.preventDefault();
@@ -155,18 +159,20 @@
 		}
 	}
 
-	onMount(async () => {
+	onMount(() => {
 		document.addEventListener('keydown', handleKeydown);
-		
-		// Lazy load components
-		const [creatorModule, logsModule, terminalModule] = await Promise.all([
-			import('$lib/components/ResourceCreator.svelte'),
-			import('$lib/components/PodLogsViewer.svelte'),
-			import('$lib/components/PodTerminal.svelte')
-		]);
-		ResourceCreator = creatorModule.default;
-		PodLogsViewer = logsModule.default;
-		PodTerminal = terminalModule.default;
+
+		const loadLazyComponents = async () => {
+			const [creatorModule, logsModule, terminalModule] = await Promise.all([
+				import('$lib/components/ResourceCreator.svelte'),
+				import('$lib/components/PodLogsViewer.svelte'),
+				import('$lib/components/PodTerminal.svelte')
+			]);
+			ResourceCreator = creatorModule.default;
+			PodLogsViewer = logsModule.default;
+			PodTerminal = terminalModule.default;
+		};
+		void loadLazyComponents();
 		
 		return () => {
 			document.removeEventListener('keydown', handleKeydown);
@@ -174,6 +180,11 @@
 	});
 
 	async function handleEdit(resource: K8sResource) {
+		if (!canManageResources) {
+			alert('Administrator privileges are required.');
+			return;
+		}
+
 		// Convert resource to YAML for editing
 		// Remove managed fields and other metadata that shouldn't be edited
 		const cleanResource = {
@@ -200,6 +211,11 @@
 	}
 
 	async function handleDelete(resource: K8sResource) {
+		if (!canManageResources) {
+			alert('Administrator privileges are required.');
+			return;
+		}
+
 		if (confirm(`Are you sure you want to delete ${resource.metadata.name}?`)) {
 			try {
 				const response = await apiClient('/api/resources', {
@@ -219,7 +235,7 @@
 					handleRefresh();
 				} else {
 					const result = await response.json();
-					alert(`Failed to delete: ${result.error}`);
+					alert(`Failed to delete: ${result.message || result.error || 'Unknown error'}`);
 				}
 			} catch (error) {
 				console.error('Failed to delete resource:', error);
@@ -238,6 +254,11 @@
 	}
 
 	function handleExec(resource: K8sResource) {
+		if (!canManageResources) {
+			alert('Administrator privileges are required.');
+			return;
+		}
+
 		// Extract container names from pod spec
 		const containers = resource.spec?.containers?.map((c: { name: string }) => c.name) || [];
 		terminalPodName = resource.metadata.name;
@@ -266,7 +287,7 @@
 		const metricsMap = new Map<string, MetricSeries[]>();
 
 		try {
-			for (const chart of data.metricsCharts) {
+			for (const chart of data.metricsCharts ?? []) {
 				if (!chart.query) continue;
 
 				// Use range query for line charts to get multiple data points
@@ -359,11 +380,11 @@
 				resourceType={data.resourceType}
 				resources={resources}
 				namespace={data.namespace}
-				onEdit={handleEdit}
-				onDelete={handleDelete}
+				onEdit={canManageResources ? handleEdit : undefined}
+				onDelete={canManageResources ? handleDelete : undefined}
 				onRefresh={handleRefresh}
 				onLogs={data.resourceType === 'pods' ? handleLogs : undefined}
-				onExec={data.resourceType === 'pods' ? handleExec : undefined}
+				onExec={data.resourceType === 'pods' && canManageResources ? handleExec : undefined}
 				onEvents={handleEvents}
 				hideTable={eventsExpanded}
 				onToggleEvents={() => eventsExpanded = !eventsExpanded}
@@ -385,7 +406,7 @@
 </div>
 
 <!-- Resource Creator Modal (lazy loaded) -->
-{#if ResourceCreator}
+{#if ResourceCreator && canManageResources}
 	<ResourceCreator
 		isOpen={$resourceCreator.isOpen}
 		onClose={() => resourceCreator.close()}
