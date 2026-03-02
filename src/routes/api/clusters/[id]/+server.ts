@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { clusterService } from '$lib/server/services/clusterService';
-import { getCurrentClusterId } from '$lib/server/clusterContext';
+import { getCurrentClusterId, setCurrentClusterId } from '$lib/server/clusterContext';
 
 function extractErrorStatus(error: any): number {
 	return error?.statusCode || error?.response?.statusCode || 400;
@@ -15,28 +15,7 @@ function extractErrorMessage(error: any): string {
 	return 'Unknown error';
 }
 
-export const GET: RequestHandler = async (event) => {
-	try {
-		const clusters = await clusterService.listClusters();
-		const currentClusterId = getCurrentClusterId(event);
-
-		return json({
-			clusters,
-			currentClusterId
-		});
-	} catch (error) {
-		console.error('Failed to list clusters:', error);
-		return json(
-			{
-				error: 'Failed to list clusters',
-				message: extractErrorMessage(error)
-			},
-			{ status: 500 }
-		);
-	}
-};
-
-export const POST: RequestHandler = async ({ request }) => {
+export const PUT: RequestHandler = async ({ params, request }) => {
 	try {
 		const body = await request.json();
 		const { server, token, skipTLSVerify = true } = body || {};
@@ -48,18 +27,40 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		const created = await clusterService.createCluster({
+		const updated = await clusterService.updateCluster(params.id, {
 			server,
 			token,
 			skipTLSVerify
 		});
 
-		return json({ cluster: created }, { status: 201 });
+		return json({ cluster: updated });
 	} catch (error) {
-		console.error('Failed to create cluster:', error);
+		console.error('Failed to update cluster:', error);
 		return json(
 			{
-				error: 'Failed to create cluster',
+				error: 'Failed to update cluster',
+				message: extractErrorMessage(error)
+			},
+			{ status: extractErrorStatus(error) }
+		);
+	}
+};
+
+export const DELETE: RequestHandler = async (event) => {
+	try {
+		const { id } = event.params;
+		await clusterService.deleteCluster(id);
+
+		if (getCurrentClusterId(event) === id) {
+			setCurrentClusterId(event, null);
+		}
+
+		return json({ success: true });
+	} catch (error) {
+		console.error('Failed to delete cluster:', error);
+		return json(
+			{
+				error: 'Failed to delete cluster',
 				message: extractErrorMessage(error)
 			},
 			{ status: extractErrorStatus(error) }

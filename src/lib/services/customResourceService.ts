@@ -16,7 +16,7 @@ export class CustomResourceService {
 	private kc: k8s.KubeConfig;
 	private customObjectsApi: k8s.CustomObjectsApi;
 
-	constructor(server: string, token: string) {
+	constructor(server: string, token: string, skipTLSVerify: boolean = true) {
 		if (!server || !token) {
 			throw new Error('Server URL and token are required');
 		}
@@ -29,7 +29,7 @@ export class CustomResourceService {
 			clusters: [{
 				name: 'current-cluster',
 				server: cleanServer,
-				skipTLSVerify: true
+				skipTLSVerify
 			}],
 			users: [{
 				name: 'current-user',

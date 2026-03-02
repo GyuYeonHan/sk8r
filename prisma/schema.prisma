@@ -1,0 +1,22 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Cluster {
+  id              String   @id @default(cuid())
+  name            String
+  serverEncrypted String
+  serverIv        String
+  serverTag       String
+  tokenEncrypted  String
+  tokenIv         String
+  tokenTag        String
+  skipTLSVerify   Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

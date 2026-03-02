@@ -3,7 +3,8 @@ import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
 import { Exec } from '@kubernetes/client-node';
 import * as stream from 'stream';
-import { createKubeConfig } from './k8sAuth';
+import { createKubeConfig, type K8sCredentials } from './k8sAuth';
+import { resolveK8sCredentialsFromCookieHeader } from './clusterContext';
 
 // Store active connections for cleanup
 const activeConnections = new Map<string, { ws: WebSocket; cleanup: () => void }>();
@@ -12,6 +13,29 @@ export function createWebSocketServer(): WebSocketServer {
 	const wss = new WebSocketServer({ noServer: true });
 
 	wss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
+		void handleConnection(ws, request);
+	});
+
+	return wss;
+}
+
+function credentialResolveErrorMessage(
+	error: 'NO_CLUSTER_SELECTED' | 'CLUSTER_NOT_FOUND' | 'DECRYPT_FAILED'
+): string {
+	switch (error) {
+		case 'NO_CLUSTER_SELECTED':
+			return 'No cluster selected';
+		case 'CLUSTER_NOT_FOUND':
+			return 'Selected cluster not found';
+		case 'DECRYPT_FAILED':
+			return 'Failed to decrypt cluster credentials';
+		default:
+			return 'Failed to resolve cluster credentials';
+	}
+}
+
+async function handleConnection(ws: WebSocket, request: IncomingMessage): Promise<void> {
+	try {
 		const url = new URL(request.url || '', `http://${request.headers.host}`);
 		const pathMatch = url.pathname.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/exec$/);
 
@@ -20,14 +44,15 @@ export function createWebSocketServer(): WebSocketServer {
 			return;
 		}
 
-		// Extract credentials from query params (passed from client)
-		const server = url.searchParams.get('server');
-		const token = url.searchParams.get('token');
-		const skipTLSVerify = url.searchParams.get('skipTLSVerify') !== 'false';
+		const cookieHeader = Array.isArray(request.headers.cookie)
+			? request.headers.cookie.join('; ')
+			: request.headers.cookie;
 
-		if (!server || !token) {
-			ws.send('\x1b[31mError: Missing Kubernetes credentials\x1b[0m\r\n');
-			ws.close(1008, 'Missing credentials');
+		const resolved = await resolveK8sCredentialsFromCookieHeader(cookieHeader);
+		if ('error' in resolved) {
+			const message = credentialResolveErrorMessage(resolved.error);
+			ws.send(`\x1b[31mError: ${message}\x1b[0m\r\n`);
+			ws.close(1008, message);
 			return;
 		}
 
@@ -36,10 +61,12 @@ export function createWebSocketServer(): WebSocketServer {
 		const container = url.searchParams.get('container') || undefined;
 		const command = url.searchParams.get('command') || '/bin/sh';
 
-		handleExecConnection(ws, namespace, podName, container, command, server, token, skipTLSVerify);
-	});
-
-	return wss;
+		await handleExecConnection(ws, namespace, podName, container, command, resolved.credentials);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		ws.send(`\x1b[31mError: ${message}\x1b[0m\r\n`);
+		ws.close(1011, message);
+	}
 }
 
 export function handleUpgrade(
@@ -67,15 +94,13 @@ async function handleExecConnection(
 	podName: string,
 	container: string | undefined,
 	command: string,
-	server: string,
-	token: string,
-	skipTLSVerify: boolean = true
+	credentials: K8sCredentials
 ): Promise<void> {
 	const connectionId = `${namespace}/${podName}/${container || 'default'}/${Date.now()}`;
 
 	console.log(`[WebSocket] New exec connection: ${connectionId}`);
 
-	const kc = createKubeConfig(server, token, skipTLSVerify);
+	const kc = createKubeConfig(credentials.server, credentials.token, credentials.skipTLSVerify);
 	const exec = new Exec(kc);
 
 	// Track K8s connection for cleanup

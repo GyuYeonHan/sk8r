@@ -7,10 +7,9 @@
 	import { dataSource } from '$lib/stores/dataSource';
 	import { learningMode } from '$lib/stores/learningMode';
 	import { darkMode } from '$lib/stores/darkMode';
-	import { clusterStore, type ClusterContext, type CustomCluster } from '$lib/stores/cluster';
+	import { clusterStore, type CustomCluster } from '$lib/stores/cluster';
 	import { namespaceStore } from '$lib/stores/namespaces';
 	import { resourceCreator } from '$lib/stores/resourceCreator';
-	import { authToken } from '$lib/stores/auth';
 
 	// Design patterns configuration
 	const designPatterns = [
@@ -74,12 +73,6 @@
 		if (newContextOrId && newContextOrId !== getCurrentClusterId()) {
 			clusterSwitching = true;
 			try {
-				// Check if it's a custom cluster and update authToken
-				const customCluster = $clusterStore.customClusters.find(c => c.id === newContextOrId);
-				if (customCluster) {
-					authToken.setToken(customCluster.token);
-				}
-				
 				await clusterStore.switchContext(newContextOrId);
 			} catch (err) {
 				console.error('Failed to switch cluster:', err);
@@ -111,7 +104,7 @@
 	function openEditClusterModal(cluster: CustomCluster) {
 		editingCluster = cluster;
 		clusterServer = cluster.server;
-		clusterToken = cluster.token;
+		clusterToken = '';
 		clusterSkipTLS = cluster.skipTLSVerify ?? true;
 		clusterModalError = null;
 		showClusterModal = true;
@@ -126,18 +119,17 @@
 		clusterModalError = null;
 	}
 
-	function deleteCluster(cluster: CustomCluster) {
+	async function deleteCluster(cluster: CustomCluster) {
 		const isCurrentCluster = $clusterStore.currentCustomClusterId === cluster.id;
 		const message = isCurrentCluster 
 			? `Are you sure you want to delete "${cluster.name}"? This is your current cluster and will require selecting another cluster.`
 			: `Are you sure you want to delete "${cluster.name}"?`;
 		
 		if (confirm(message)) {
-			clusterStore.removeCluster(cluster.id);
-			
-			// If we deleted the current cluster and there are other clusters, reload to reset state
-			if (isCurrentCluster) {
-				window.location.reload();
+			try {
+				await clusterStore.removeCluster(cluster.id);
+			} catch (err) {
+				console.error('Failed to delete cluster:', err);
 			}
 		}
 	}
@@ -226,11 +218,7 @@
 			}
 			closeClusterModal();
 		} catch (err: any) {
-			// Extract detailed error message from API response
-			if (err.response) {
-				const data = await err.response.json().catch(() => ({}));
-				clusterModalError = data.message || data.error || err.message || 'Failed to save cluster';
-			} else if (err instanceof Error) {
+			if (err instanceof Error) {
 				clusterModalError = err.message;
 			} else {
 				clusterModalError = 'Failed to save cluster';
@@ -250,18 +238,7 @@
 	function getAllClusters(): Array<{ id: string; name: string; server: string; isCustom: boolean; isCurrent: boolean }> {
 		const clusters: Array<{ id: string; name: string; server: string; isCustom: boolean; isCurrent: boolean }> = [];
 		
-		// Add kubeconfig contexts
-		$clusterStore.contexts.forEach(ctx => {
-			clusters.push({
-				id: ctx.name,
-				name: ctx.name,
-				server: ctx.server || 'unknown',
-				isCustom: false,
-				isCurrent: ctx.isCurrent
-			});
-		});
-		
-		// Add custom clusters
+		// Add server-managed clusters
 		$clusterStore.customClusters.forEach(cluster => {
 			clusters.push({
 				id: cluster.id,

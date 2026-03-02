@@ -11,7 +11,7 @@ function webSocketPlugin(): Plugin {
 		name: 'websocket-plugin',
 		configureServer(server) {
 			// Dynamically import the WebSocket server module
-			import('./src/lib/server/websocket.js').then(({ createWebSocketServer, handleUpgrade }) => {
+			import('./src/lib/server/websocket').then(({ createWebSocketServer, handleUpgrade }) => {
 				const wss = createWebSocketServer();
 
 				server.httpServer?.on('upgrade', (request, socket, head) => {

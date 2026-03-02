@@ -13,6 +13,9 @@ RUN npm ci
 # Copy the rest of the application code
 COPY . .
 
+# Generate Prisma client after schema is available
+RUN npx prisma generate
+
 # Build the SvelteKit application
 RUN npm run build
 
@@ -29,6 +32,7 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/package.json .
 COPY --from=builder --chown=node:node /app/server.js .
 COPY --from=builder --chown=node:node /app/websocket.js .
+COPY --from=builder --chown=node:node /app/prisma ./prisma
 
 # Run as non-root user
 USER node

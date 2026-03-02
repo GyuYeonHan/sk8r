@@ -1,23 +1,16 @@
 import type { RequestHandler } from './$types';
 import { Log } from '@kubernetes/client-node';
 import { Writable } from 'stream';
-import { getK8sCredentials, createKubeConfig } from '$lib/server/k8sAuth';
+import { createKubeConfig, credentialErrorResponse } from '$lib/server/k8sAuth';
+import { resolveK8sCredentials } from '$lib/server/clusterContext';
 
-export const GET: RequestHandler = async ({ params, url, request }) => {
-	const credentials = getK8sCredentials(request);
-	if (!credentials) {
-		return new Response(
-			`event: error\ndata: ${JSON.stringify('Missing or invalid Kubernetes credentials')}\n\n`,
-			{
-				status: 401,
-				headers: {
-					'Content-Type': 'text/event-stream',
-					'Cache-Control': 'no-cache',
-					'Connection': 'keep-alive'
-				}
-			}
-		);
+export const GET: RequestHandler = async (event) => {
+	const resolved = await resolveK8sCredentials(event);
+	if ('error' in resolved) {
+		return credentialErrorResponse(resolved.error);
 	}
+	const credentials = resolved.credentials;
+	const { params, url } = event;
 
 	const { namespace, name } = params;
 	const container = url.searchParams.get('container') || undefined;

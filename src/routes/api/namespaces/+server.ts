@@ -1,16 +1,22 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { K8sApiServiceSimple } from '$lib/services/k8sApiSimple';
-import { getK8sCredentials, unauthorizedResponse } from '$lib/server/k8sAuth';
+import { credentialErrorResponse } from '$lib/server/k8sAuth';
+import { resolveK8sCredentials } from '$lib/server/clusterContext';
 
-export const GET: RequestHandler = async ({ request }) => {
-	const credentials = getK8sCredentials(request);
-	if (!credentials) {
-		return unauthorizedResponse();
+export const GET: RequestHandler = async (event) => {
+	const resolved = await resolveK8sCredentials(event);
+	if ('error' in resolved) {
+		return credentialErrorResponse(resolved.error);
 	}
+	const credentials = resolved.credentials;
 
 	try {
-		const k8sApi = new K8sApiServiceSimple(credentials.server, credentials.token);
+		const k8sApi = new K8sApiServiceSimple(
+			credentials.server,
+			credentials.token,
+			credentials.skipTLSVerify
+		);
 		const namespaces = await k8sApi.listNamespaces();
 		
 		// Sort namespaces alphabetically, but keep 'default' and 'kube-system' at top

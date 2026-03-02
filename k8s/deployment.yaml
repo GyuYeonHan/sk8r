@@ -22,6 +22,13 @@ spec:
         ports:
         - containerPort: 3000
         env:
+        - name: DATABASE_URL
+          value: "file:./dev.db"
+        - name: APP_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: sk8tes-secrets
+              key: appEncryptionKey
         - name: PROMETHEUS_URL
           value: "http://kube-prometheus-stack-prometheus.monitoring:9090"
 

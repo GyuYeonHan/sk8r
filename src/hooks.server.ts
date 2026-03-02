@@ -1,10 +1,13 @@
 import type { Handle } from '@sveltejs/kit';
+import { assertEncryptionKeyConfigured } from '$lib/server/crypto/credentialCrypto';
 
 // Global WebSocket server reference (set by custom server or vite plugin)
 declare global {
 	// eslint-disable-next-line no-var
 	var __wss: import('ws').WebSocketServer | undefined;
 }
+
+assertEncryptionKeyConfigured();
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// Handle WebSocket upgrade requests for exec endpoint
@@ -29,4 +32,3 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	return resolve(event);
 };
-

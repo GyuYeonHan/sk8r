@@ -69,6 +69,51 @@ env:
   value: "http://your-prometheus-service:9090"
 ```
 
+### Cluster Credential Storage (Prisma)
+
+Cluster connection settings are stored server-side in a Prisma database (SQLite by default), and sensitive fields are encrypted with AES-256-GCM.
+
+Required environment variables:
+
+```sh
+DATABASE_URL="file:./dev.db"
+APP_ENCRYPTION_KEY="<base64-encoded-32-byte-key>"
+```
+
+Generate a valid encryption key:
+
+```sh
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+For Kubernetes deployment, create a secret (example file provided):
+
+```sh
+kubectl apply -f k8s/secret.example.yaml
+```
+
+Install Prisma client and apply migrations:
+
+```sh
+npm run prisma:generate
+npm run prisma:migrate -- --name init_clusters
+```
+
+The currently selected cluster is tracked with an `HttpOnly` cookie (`k8s_cluster_id`), not browser localStorage.
+
+### PostgreSQL Switch
+
+This project is schema-compatible with PostgreSQL. To switch from SQLite:
+
+1. Change `DATABASE_URL` to a PostgreSQL DSN.
+2. Change `prisma/schema.prisma` datasource provider to `postgresql`.
+3. Run a new baseline migration:
+```sh
+npm run prisma:migrate -- --name init_postgresql
+```
+
+No application code changes are required for this switch.
+
 ### Alternative Service Types
 
 The default service type is `LoadBalancer`. For other environments:

@@ -80,6 +80,13 @@
 		}
 	});
 
+	$effect(() => {
+		const currentClusterId = $clusterStore.currentCustomClusterId;
+		if (browser && currentClusterId && (data.loadClientSide || !data.resource)) {
+			loadResource();
+		}
+	});
+
 	// Check if this is a pod resource
 	let isPod = $derived(data.resourceType === 'pods');
 

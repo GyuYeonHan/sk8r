@@ -1,5 +1,4 @@
-import { writable, derived, get } from 'svelte/store';
-import { browser } from '$app/environment';
+import { writable, derived } from 'svelte/store';
 
 export interface ClusterContext {
 	name: string;
@@ -13,10 +12,11 @@ export interface ClusterContext {
 export interface CustomCluster {
 	id: string;
 	server: string;
-	token: string;
 	name: string;
 	skipTLSVerify: boolean;
 	isCurrent?: boolean;
+	createdAt?: string;
+	updatedAt?: string;
 }
 
 export interface ClusterState {
@@ -28,295 +28,228 @@ export interface ClusterState {
 	error: string | null;
 }
 
-const STORAGE_KEY = 'k8s-custom-clusters';
-const CURRENT_CLUSTER_KEY = 'k8s-current-cluster-id';
+interface ClustersApiResponse {
+	clusters: Array<{
+		id: string;
+		name: string;
+		server: string;
+		skipTLSVerify: boolean;
+		createdAt: string;
+		updatedAt: string;
+	}>;
+	currentClusterId: string | null;
+}
+
+function toContext(cluster: CustomCluster): ClusterContext {
+	return {
+		name: cluster.id,
+		cluster: cluster.name,
+		user: 'server-managed',
+		isCurrent: !!cluster.isCurrent,
+		server: cluster.server
+	};
+}
+
+function extractErrorMessage(error: unknown): string {
+	if (error instanceof Error) return error.message;
+	return 'Unknown error';
+}
+
+async function parseErrorResponse(response: Response): Promise<string> {
+	try {
+		const payload = await response.json();
+		return payload.message || payload.error || response.statusText;
+	} catch {
+		return response.statusText;
+	}
+}
 
 function createClusterStore() {
-	// Load custom clusters from localStorage
-	let initialCustomClusters: CustomCluster[] = [];
-	let initialCurrentClusterId: string | null = null;
-	
-	if (browser) {
-		try {
-			const stored = localStorage.getItem(STORAGE_KEY);
-			if (stored) {
-				initialCustomClusters = JSON.parse(stored);
-			}
-			const currentId = localStorage.getItem(CURRENT_CLUSTER_KEY);
-			if (currentId) {
-				initialCurrentClusterId = currentId;
-			}
-		} catch (e) {
-			console.error('Failed to load custom clusters from localStorage:', e);
-		}
-	}
-
 	const { subscribe, set, update } = writable<ClusterState>({
 		contexts: [],
-		customClusters: initialCustomClusters,
+		customClusters: [],
 		currentContext: '',
-		currentCustomClusterId: initialCurrentClusterId,
+		currentCustomClusterId: null,
 		loading: false,
 		error: null
 	});
 
-	// Helper to persist custom clusters to localStorage
-	const persistCustomClusters = (clusters: CustomCluster[]) => {
-		if (browser) {
-			try {
-				localStorage.setItem(STORAGE_KEY, JSON.stringify(clusters));
-			} catch (e) {
-				console.error('Failed to save custom clusters to localStorage:', e);
-			}
+	const fetchAndSetClusters = async () => {
+		const response = await fetch('/api/clusters');
+		if (!response.ok) {
+			throw new Error(await parseErrorResponse(response));
 		}
+
+		const payload = (await response.json()) as ClustersApiResponse;
+		const currentId = payload.currentClusterId;
+		const clusters: CustomCluster[] = (payload.clusters || []).map((cluster) => ({
+			...cluster,
+			isCurrent: cluster.id === currentId
+		}));
+
+		update(state => ({
+			...state,
+			customClusters: clusters,
+			contexts: clusters.map(toContext),
+			currentCustomClusterId: currentId,
+			currentContext: currentId || '',
+			loading: false
+		}));
+
+		return {
+			contexts: clusters.map(toContext),
+			currentContext: currentId || '',
+			totalContexts: clusters.length
+		};
 	};
 
-	// Helper to persist current cluster ID
-	const persistCurrentClusterId = (id: string | null) => {
-		if (browser) {
-			try {
-				if (id) {
-					localStorage.setItem(CURRENT_CLUSTER_KEY, id);
-				} else {
-					localStorage.removeItem(CURRENT_CLUSTER_KEY);
-				}
-			} catch (e) {
-				console.error('Failed to save current cluster ID to localStorage:', e);
-			}
+	const switchCluster = async (clusterId: string) => {
+		const response = await fetch('/api/clusters/select', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ clusterId })
+		});
+
+		if (!response.ok) {
+			throw new Error(await parseErrorResponse(response));
 		}
+
+		update(state => ({
+			...state,
+			currentCustomClusterId: clusterId,
+			currentContext: clusterId,
+			customClusters: state.customClusters.map(c => ({
+				...c,
+				isCurrent: c.id === clusterId
+			})),
+			loading: false
+		}));
+
+		return { success: true, currentContext: clusterId };
 	};
 
 	return {
 		subscribe,
-		
-		// Fetch available contexts from the API (deprecated - returns empty for backward compatibility)
+
+		// Fetch available contexts from the API
 		async fetchContexts() {
-			// No longer uses kubeconfig - all clusters are managed client-side
-			update(state => ({
-				...state,
-				contexts: [],
-				currentContext: '',
-				loading: false
-			}));
-			return { contexts: [], currentContext: '', totalContexts: 0 };
+			update(state => ({ ...state, loading: true, error: null }));
+
+			try {
+				return await fetchAndSetClusters();
+			} catch (error) {
+				const message = extractErrorMessage(error);
+				update(state => ({ ...state, loading: false, error: message }));
+				throw error;
+			}
 		},
-		
-		// Switch to a different cluster (custom clusters only now)
+
+		// Switch current cluster (server-managed via HttpOnly cookie)
 		async switchContext(clusterId: string) {
 			update(state => ({ ...state, loading: true, error: null }));
-			
+
 			try {
-				// Get current state to check for custom cluster
-				const currentState = get({ subscribe });
-				
-				// Find the custom cluster
-				const customCluster = currentState.customClusters.find(c => c.id === clusterId);
-				if (!customCluster) {
-					throw new Error('Cluster not found');
-				}
-				
-				// Switch to custom cluster
-				persistCurrentClusterId(customCluster.id);
-				
-				update(state => ({
-					...state,
-					currentCustomClusterId: customCluster.id,
-					currentContext: '',
-					customClusters: state.customClusters.map(c => ({
-						...c,
-						isCurrent: c.id === customCluster.id
-					})),
-					contexts: [],
-					loading: false
-				}));
-				
-				// Reload the page to refresh all data with new cluster
-				if (browser) {
-					window.location.reload();
-				}
-				return { success: true, currentContext: customCluster.id };
+				return await switchCluster(clusterId);
 			} catch (error) {
-				const message = error instanceof Error ? error.message : 'Unknown error';
+				const message = extractErrorMessage(error);
 				update(state => ({ ...state, loading: false, error: message }));
 				throw error;
 			}
 		},
-		
+
 		setError: (error: string | null) => update(state => ({ ...state, error })),
-		
-		// Add a new custom cluster
+
+		// Add a new cluster
 		async addCluster(server: string, token: string, skipTLSVerify: boolean = true): Promise<CustomCluster> {
 			update(state => ({ ...state, loading: true, error: null }));
-			
+
 			try {
-				// Fetch cluster info from API
-				const response = await fetch('/api/clusters/info', {
+				const response = await fetch('/api/clusters', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ server, token, skipTLSVerify })
 				});
-				
+
 				if (!response.ok) {
-					// Try to extract detailed error message from response
-					let errorMessage = `Failed to fetch cluster info: ${response.statusText}`;
-					try {
-						const errorData = await response.json();
-						if (errorData.message) {
-							errorMessage = errorData.message;
-						} else if (errorData.error) {
-							errorMessage = errorData.error;
-						}
-					} catch {
-						// If JSON parsing fails, use status text
-					}
-					throw new Error(errorMessage);
+					throw new Error(await parseErrorResponse(response));
 				}
-				
-				const clusterInfo = await response.json();
-				const newCluster: CustomCluster = {
-					id: crypto.randomUUID(),
-					server,
-					token,
-					name: clusterInfo.name || new URL(server).hostname,
-					skipTLSVerify,
-					isCurrent: false
-				};
-				
-				update(state => {
-					const updatedClusters = [...state.customClusters, newCluster];
-					persistCustomClusters(updatedClusters);
-					return {
-						...state,
-						customClusters: updatedClusters,
-						loading: false
-					};
-				});
-				
-				return newCluster;
+
+				const payload = await response.json();
+				const cluster = payload.cluster as CustomCluster;
+				await fetchAndSetClusters();
+				return cluster;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : 'Unknown error';
+				const message = extractErrorMessage(error);
 				update(state => ({ ...state, loading: false, error: message }));
 				throw error;
 			}
 		},
-		
-		// Update an existing custom cluster
+
+		// Update an existing cluster
 		async updateCluster(id: string, server: string, token: string, skipTLSVerify: boolean = true): Promise<CustomCluster> {
 			update(state => ({ ...state, loading: true, error: null }));
-			
+
 			try {
-				// Fetch cluster info from API
-				const response = await fetch('/api/clusters/info', {
-					method: 'POST',
+				const response = await fetch(`/api/clusters/${id}`, {
+					method: 'PUT',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ server, token, skipTLSVerify })
 				});
-				
+
 				if (!response.ok) {
-					// Try to extract detailed error message from response
-					let errorMessage = `Failed to fetch cluster info: ${response.statusText}`;
-					try {
-						const errorData = await response.json();
-						if (errorData.message) {
-							errorMessage = errorData.message;
-						} else if (errorData.error) {
-							errorMessage = errorData.error;
-						}
-					} catch {
-						// If JSON parsing fails, use status text
-					}
-					throw new Error(errorMessage);
+					throw new Error(await parseErrorResponse(response));
 				}
-				
-				const clusterInfo = await response.json();
-				let updatedCluster: CustomCluster | null = null;
-				
-				update(state => {
-					const updatedClusters = state.customClusters.map(cluster => {
-						if (cluster.id === id) {
-							updatedCluster = { ...cluster, server, token, skipTLSVerify, name: clusterInfo.name || new URL(server).hostname };
-							return updatedCluster;
-						}
-						return cluster;
-					});
-					persistCustomClusters(updatedClusters);
-					return {
-						...state,
-						customClusters: updatedClusters,
-						loading: false
-					};
-				});
-				
-				if (!updatedCluster) {
-					throw new Error('Cluster not found');
-				}
-				return updatedCluster;
+
+				const payload = await response.json();
+				const cluster = payload.cluster as CustomCluster;
+				await fetchAndSetClusters();
+				return cluster;
 			} catch (error) {
-				const message = error instanceof Error ? error.message : 'Unknown error';
+				const message = extractErrorMessage(error);
 				update(state => ({ ...state, loading: false, error: message }));
 				throw error;
 			}
 		},
-		
-		// Remove a custom cluster
-		removeCluster(id: string) {
-			update(state => {
-				const updatedClusters = state.customClusters.filter(cluster => cluster.id !== id);
-				persistCustomClusters(updatedClusters);
-				
-				// If removing the current cluster, clear it
-				let newCurrentId = state.currentCustomClusterId;
-				if (state.currentCustomClusterId === id) {
-					newCurrentId = null;
-					persistCurrentClusterId(null);
+
+		// Remove a cluster
+		async removeCluster(id: string) {
+			update(state => ({ ...state, loading: true, error: null }));
+
+			try {
+				const response = await fetch(`/api/clusters/${id}`, {
+					method: 'DELETE'
+				});
+
+				if (!response.ok) {
+					throw new Error(await parseErrorResponse(response));
 				}
-				
-				return {
-					...state,
-					customClusters: updatedClusters,
-					currentCustomClusterId: newCurrentId
-				};
-			});
-		},
-		
-		// Get token for a specific cluster
-		getClusterToken(clusterId: string): string | null {
-			let token: string | null = null;
-			clusterStore.subscribe(state => {
-				const cluster = state.customClusters.find(c => c.id === clusterId);
-				token = cluster?.token || null;
-			})();
-			return token;
-		},
-		
-		// Switch to a custom cluster
-		switchToCustomCluster(clusterId: string) {
-			update(state => {
-				const cluster = state.customClusters.find(c => c.id === clusterId);
-				if (!cluster) {
-					return { ...state, error: 'Cluster not found' };
-				}
-				
-				persistCurrentClusterId(clusterId);
-				
-				return {
-					...state,
-					currentCustomClusterId: clusterId,
-					customClusters: state.customClusters.map(c => ({
-						...c,
-						isCurrent: c.id === clusterId
-					})),
-					currentContext: '', // Clear kubeconfig context
-					error: null
-				};
-			});
-		},
-		
-		reset: () => {
-			if (browser) {
-				localStorage.removeItem(STORAGE_KEY);
-				localStorage.removeItem(CURRENT_CLUSTER_KEY);
+
+				await fetchAndSetClusters();
+			} catch (error) {
+				const message = extractErrorMessage(error);
+				update(state => ({ ...state, loading: false, error: message }));
+				throw error;
 			}
+		},
+
+		// Retained for backward compatibility
+		getClusterToken(_clusterId: string): string | null {
+			return null;
+		},
+
+		// Switch to a custom cluster (alias)
+		async switchToCustomCluster(clusterId: string) {
+			update(state => ({ ...state, loading: true, error: null }));
+			try {
+				return await switchCluster(clusterId);
+			} catch (error) {
+				const message = extractErrorMessage(error);
+				update(state => ({ ...state, loading: false, error: message }));
+				throw error;
+			}
+		},
+
+		reset: () => {
 			set({
 				contexts: [],
 				customClusters: [],
@@ -335,4 +268,3 @@ export const clusterStore = createClusterStore();
 export const currentCluster = derived(clusterStore, $store => {
 	return $store.contexts.find(ctx => ctx.isCurrent) || null;
 });
-

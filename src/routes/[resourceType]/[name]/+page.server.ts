@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 
-// Data is now loaded client-side since credentials are stored in localStorage
+// Data is loaded client-side to keep initial SSR lightweight.
 // This server load just passes through the params
 export const load: PageServerLoad = async ({ params, url }) => {
 	const { resourceType, name } = params;

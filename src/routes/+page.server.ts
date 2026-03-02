@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { resourceMetricsConfig } from '$lib/config/metricsConfig';
 
-// Data is now loaded client-side since credentials are stored in localStorage
+// Data is loaded client-side to keep initial SSR lightweight.
 // This server load just passes through the query params
 export const load: PageServerLoad = async ({ url }) => {
 	const resourceType = url.searchParams.get('resource') || '';

@@ -1,16 +1,133 @@
 // Standalone WebSocket server for pod exec functionality
 import { WebSocketServer, WebSocket } from 'ws';
-import { Exec } from '@kubernetes/client-node';
+import { Exec, KubeConfig } from '@kubernetes/client-node';
+import { PrismaClient } from '@prisma/client';
+import crypto from 'node:crypto';
 import * as stream from 'stream';
-import { createKubeConfig } from './src/lib/server/k8sAuth.js';
+
+const KEY_BYTES = 32;
+const CLUSTER_COOKIE_NAME = 'k8s_cluster_id';
+
+const prisma = new PrismaClient({
+	log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error']
+});
 
 // Store active connections for cleanup
 const activeConnections = new Map();
+
+let cachedKey = null;
+
+function readEncryptionKey() {
+	if (cachedKey) {
+		return cachedKey;
+	}
+
+	const raw = process.env.APP_ENCRYPTION_KEY;
+	if (!raw) {
+		throw new Error('APP_ENCRYPTION_KEY is required. Set a 32-byte base64 key in environment variables.');
+	}
+
+	const key = Buffer.from(raw, 'base64');
+	if (key.length !== KEY_BYTES) {
+		throw new Error('APP_ENCRYPTION_KEY must decode to exactly 32 bytes.');
+	}
+
+	cachedKey = key;
+	return key;
+}
+
+function decryptText(ciphertext, iv, tag) {
+	const key = readEncryptionKey();
+	const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64'));
+	decipher.setAuthTag(Buffer.from(tag, 'base64'));
+
+	const decrypted = Buffer.concat([
+		decipher.update(Buffer.from(ciphertext, 'base64')),
+		decipher.final()
+	]);
+
+	return decrypted.toString('utf8');
+}
+
+function getClusterIdFromCookieHeader(cookieHeader) {
+	if (!cookieHeader) return null;
+
+	const cookieParts = cookieHeader.split(';');
+	for (const rawPart of cookieParts) {
+		const part = rawPart.trim();
+		if (!part.startsWith(`${CLUSTER_COOKIE_NAME}=`)) continue;
+		const value = part.slice(CLUSTER_COOKIE_NAME.length + 1).trim();
+		return decodeURIComponent(value);
+	}
+
+	return null;
+}
+
+function createKubeConfig(server, token, skipTLSVerify = true) {
+	const kc = new KubeConfig();
+	kc.loadFromOptions({
+		clusters: [{ name: 'current-cluster', server: server.replace(/\/+$/, ''), skipTLSVerify }],
+		users: [{ name: 'current-user', token }],
+		contexts: [{ name: 'current-context', cluster: 'current-cluster', user: 'current-user' }],
+		currentContext: 'current-context'
+	});
+	return kc;
+}
+
+async function resolveK8sCredentials(request) {
+	const cookieHeader = Array.isArray(request.headers.cookie)
+		? request.headers.cookie.join('; ')
+		: request.headers.cookie;
+	const clusterId = getClusterIdFromCookieHeader(cookieHeader);
+
+	if (!clusterId) {
+		return { error: 'NO_CLUSTER_SELECTED' };
+	}
+
+	const cluster = await prisma.cluster.findUnique({ where: { id: clusterId } });
+	if (!cluster) {
+		return { error: 'CLUSTER_NOT_FOUND' };
+	}
+
+	try {
+		return {
+			credentials: {
+				server: decryptText(cluster.serverEncrypted, cluster.serverIv, cluster.serverTag),
+				token: decryptText(cluster.tokenEncrypted, cluster.tokenIv, cluster.tokenTag),
+				skipTLSVerify: cluster.skipTLSVerify
+			}
+		};
+	} catch (error) {
+		console.error('[WebSocket] Failed to decrypt cluster credentials:', error);
+		return { error: 'DECRYPT_FAILED' };
+	}
+}
+
+function credentialResolveErrorMessage(error) {
+	switch (error) {
+		case 'NO_CLUSTER_SELECTED':
+			return 'No cluster selected';
+		case 'CLUSTER_NOT_FOUND':
+			return 'Selected cluster not found';
+		case 'DECRYPT_FAILED':
+			return 'Failed to decrypt cluster credentials';
+		default:
+			return 'Failed to resolve cluster credentials';
+	}
+}
 
 export function createWebSocketServer() {
 	const wss = new WebSocketServer({ noServer: true });
 
 	wss.on('connection', (ws, request) => {
+		void handleConnection(ws, request);
+	});
+
+	return wss;
+}
+
+async function handleConnection(ws, request) {
+	try {
 		const url = new URL(request.url || '', `http://${request.headers.host}`);
 		const pathMatch = url.pathname.match(/^\/api\/pods\/([^/]+)\/([^/]+)\/exec$/);
 
@@ -19,14 +136,11 @@ export function createWebSocketServer() {
 			return;
 		}
 
-		// Extract credentials from query params (passed from client)
-		const server = url.searchParams.get('server');
-		const token = url.searchParams.get('token');
-		const skipTLSVerify = url.searchParams.get('skipTLSVerify') !== 'false';
-
-		if (!server || !token) {
-			ws.send('\x1b[31mError: Missing Kubernetes credentials\x1b[0m\r\n');
-			ws.close(1008, 'Missing credentials');
+		const resolved = await resolveK8sCredentials(request);
+		if ('error' in resolved) {
+			const message = credentialResolveErrorMessage(resolved.error);
+			ws.send(`\x1b[31mError: ${message}\x1b[0m\r\n`);
+			ws.close(1008, message);
 			return;
 		}
 
@@ -35,10 +149,12 @@ export function createWebSocketServer() {
 		const container = url.searchParams.get('container') || undefined;
 		const command = url.searchParams.get('command') || '/bin/sh';
 
-		handleExecConnection(ws, namespace, podName, container, command, server, token, skipTLSVerify);
-	});
-
-	return wss;
+		await handleExecConnection(ws, namespace, podName, container, command, resolved.credentials);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		ws.send(`\x1b[31mError: ${message}\x1b[0m\r\n`);
+		ws.close(1011, message);
+	}
 }
 
 export function handleUpgrade(wss, request, socket, head) {
@@ -55,12 +171,16 @@ export function handleUpgrade(wss, request, socket, head) {
 	});
 }
 
-async function handleExecConnection(ws, namespace, podName, container, command, server, token, skipTLSVerify = true) {
+async function handleExecConnection(ws, namespace, podName, container, command, credentials) {
 	const connectionId = `${namespace}/${podName}/${container || 'default'}/${Date.now()}`;
 
 	console.log(`[WebSocket] New exec connection: ${connectionId}`);
 
-	const kc = createKubeConfig(server, token, skipTLSVerify);
+	const kc = createKubeConfig(
+		credentials.server,
+		credentials.token,
+		credentials.skipTLSVerify
+	);
 	const exec = new Exec(kc);
 
 	// Track K8s connection for cleanup
@@ -82,7 +202,7 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 			try {
 				ws.send(typeof data === 'string' ? data : data.toString('utf8'));
 			} catch (err) {
-				console.error(`[WebSocket] Error sending to client:`, err);
+				console.error('[WebSocket] Error sending to client:', err);
 			}
 		}
 	};
@@ -168,7 +288,7 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 						(status) => {
 							console.log(`[WebSocket] Exec completed for ${connectionId}:`, status);
 							if (ws.readyState === WebSocket.OPEN) {
-								sendToClient(`\r\n\x1b[33m[Session ended]\x1b[0m\r\n`);
+								sendToClient('\r\n\x1b[33m[Session ended]\x1b[0m\r\n');
 								ws.close(1000, 'Session ended');
 							}
 						}
@@ -211,17 +331,21 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		console.error(`[WebSocket] Exec error for ${connectionId}:`, message);
 		sendToClient(`\r\n\x1b[31mError: ${message}\x1b[0m\r\n`);
-		sendToClient(`\r\n\x1b[33mMake sure the pod is running and the container exists.\x1b[0m\r\n`);
+		sendToClient('\r\n\x1b[33mMake sure the pod is running and the container exists.\x1b[0m\r\n');
 		ws.close(1011, message);
 		cleanup();
 	}
 }
 
 // Cleanup all connections on shutdown
-export function cleanupAllConnections() {
+export async function cleanupAllConnections() {
 	console.log(`[WebSocket] Cleaning up ${activeConnections.size} connections`);
 	for (const [, { cleanup }] of activeConnections) {
 		cleanup();
 	}
 	activeConnections.clear();
+
+	await prisma.$disconnect().catch((error) => {
+		console.error('[WebSocket] Failed to disconnect Prisma client:', error);
+	});
 }

@@ -84,8 +84,12 @@
 	
 	// Load resources when resource type or namespace changes
 	$effect(() => {
-		if (browser && initialized && data.resourceType && data.resourceType !== 'overview') {
+		const currentClusterId = $clusterStore.currentCustomClusterId;
+		if (browser && initialized && data.resourceType && data.resourceType !== 'overview' && currentClusterId) {
 			loadResources();
+		} else if (browser && initialized && data.resourceType && data.resourceType !== 'overview' && !currentClusterId) {
+			clientResources = [];
+			clientError = 'No cluster selected. Please add a cluster first.';
 		}
 	});
 	

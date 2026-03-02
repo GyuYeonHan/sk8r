@@ -1,38 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { KubeConfig } from '@kubernetes/client-node';
+import type { CredentialResolveError } from './clusterContext';
 
 export interface K8sCredentials {
 	server: string;
 	token: string;
 	skipTLSVerify: boolean;
-}
-
-/**
- * Extract Kubernetes credentials from request headers
- * Returns credentials or null if not found
- */
-export function getK8sCredentials(request: Request): K8sCredentials | null {
-	const authHeader = request.headers.get('Authorization');
-	const server = request.headers.get('X-K8s-Server');
-	const skipTLSHeader = request.headers.get('X-K8s-Skip-TLS');
-	
-	if (!authHeader || !server) {
-		return null;
-	}
-	
-	// Extract token from Bearer header
-	const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-	if (!token) {
-		return null;
-	}
-	
-	// Remove trailing slash from server URL
-	const cleanServer = server.replace(/\/+$/, '');
-	
-	// Parse skipTLSVerify header (default to true for backward compatibility)
-	const skipTLSVerify = skipTLSHeader !== 'false';
-	
-	return { server: cleanServer, token, skipTLSVerify };
 }
 
 /**
@@ -43,6 +16,40 @@ export function unauthorizedResponse(message = 'Missing or invalid Kubernetes cr
 		{ error: 'Unauthorized', message },
 		{ status: 401 }
 	);
+}
+
+/**
+ * Convert credential resolution error into an HTTP response.
+ */
+export function credentialErrorResponse(error: CredentialResolveError) {
+	switch (error) {
+		case 'NO_CLUSTER_SELECTED':
+			return json(
+				{
+					error: 'No cluster selected',
+					message: 'Select a cluster first before making Kubernetes API requests.'
+				},
+				{ status: 400 }
+			);
+		case 'CLUSTER_NOT_FOUND':
+			return json(
+				{
+					error: 'Cluster not found',
+					message: 'The selected cluster no longer exists.'
+				},
+				{ status: 401 }
+			);
+		case 'DECRYPT_FAILED':
+			return json(
+				{
+					error: 'Credential decryption failed',
+					message: 'Failed to decrypt stored cluster credentials.'
+				},
+				{ status: 500 }
+			);
+		default:
+			return unauthorizedResponse();
+	}
 }
 
 /**
@@ -58,4 +65,3 @@ export function createKubeConfig(server: string, token: string, skipTLSVerify: b
 	});
 	return kc;
 }
-

@@ -11,7 +11,7 @@ export class K8sApiServiceSimple {
 		return this.kc;
 	}
 
-	constructor(server: string, token: string) {
+	constructor(server: string, token: string, skipTLSVerify: boolean = true) {
 		if (!server || !token) {
 			throw new Error('Server URL and token are required');
 		}
@@ -22,11 +22,11 @@ export class K8sApiServiceSimple {
 		this.kc = new k8s.KubeConfig();
 		
 		// Use loadFromOptions instead of loadFromDefault - no kubeconfig dependency
-		this.kc.loadFromOptions({
+			this.kc.loadFromOptions({
 			clusters: [{
 				name: 'current-cluster',
 				server: cleanServer,
-				skipTLSVerify: true
+				skipTLSVerify
 			}],
 			users: [{
 				name: 'current-user',
@@ -40,7 +40,7 @@ export class K8sApiServiceSimple {
 			currentContext: 'current-context'
 		});
 
-		this.customResourceService = new CustomResourceService(cleanServer, token);
+		this.customResourceService = new CustomResourceService(cleanServer, token, skipTLSVerify);
 	}
 
 	async listResources(resourceType: string, filter: ResourceFilter = {}): Promise<K8sListResponse> {

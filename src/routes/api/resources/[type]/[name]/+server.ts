@@ -1,19 +1,26 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { K8sApiServiceSimple } from '$lib/services/k8sApiSimple';
-import { getK8sCredentials, unauthorizedResponse } from '$lib/server/k8sAuth';
+import { credentialErrorResponse } from '$lib/server/k8sAuth';
+import { resolveK8sCredentials } from '$lib/server/clusterContext';
 
-export const GET: RequestHandler = async ({ params, url, request }) => {
-	const credentials = getK8sCredentials(request);
-	if (!credentials) {
-		return unauthorizedResponse();
+export const GET: RequestHandler = async (event) => {
+	const resolved = await resolveK8sCredentials(event);
+	if ('error' in resolved) {
+		return credentialErrorResponse(resolved.error);
 	}
+	const credentials = resolved.credentials;
+	const { params, url } = event;
 
 	const { type, name } = params;
 	const namespace = url.searchParams.get('namespace') || 'default';
 
 	try {
-		const k8sApi = new K8sApiServiceSimple(credentials.server, credentials.token);
+		const k8sApi = new K8sApiServiceSimple(
+			credentials.server,
+			credentials.token,
+			credentials.skipTLSVerify
+		);
 		const resource = await k8sApi.getResource(type, name, namespace);
 		return json(resource);
 	} catch (error) {
@@ -25,18 +32,24 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 	}
 };
 
-export const DELETE: RequestHandler = async ({ params, request }) => {
-	const credentials = getK8sCredentials(request);
-	if (!credentials) {
-		return unauthorizedResponse();
+export const DELETE: RequestHandler = async (event) => {
+	const resolved = await resolveK8sCredentials(event);
+	if ('error' in resolved) {
+		return credentialErrorResponse(resolved.error);
 	}
+	const credentials = resolved.credentials;
+	const { params, request } = event;
 
 	const { type, name } = params;
 	const body = await request.json();
 	const namespace = body.namespace || 'default';
 
 	try {
-		const k8sApi = new K8sApiServiceSimple(credentials.server, credentials.token);
+		const k8sApi = new K8sApiServiceSimple(
+			credentials.server,
+			credentials.token,
+			credentials.skipTLSVerify
+		);
 		await k8sApi.deleteResource(type, name, namespace);
 		
 		return json({ success: true });

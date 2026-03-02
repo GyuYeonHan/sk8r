@@ -2,7 +2,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { KubernetesObjectApi } from '@kubernetes/client-node';
 import yaml from 'js-yaml';
-import { getK8sCredentials, unauthorizedResponse, createKubeConfig } from '$lib/server/k8sAuth';
+import { credentialErrorResponse, createKubeConfig } from '$lib/server/k8sAuth';
+import { resolveK8sCredentials } from '$lib/server/clusterContext';
 
 interface K8sManifest {
 	apiVersion: string;
@@ -34,11 +35,13 @@ function validateManifest(manifest: K8sManifest): { valid: boolean; error?: stri
 }
 
 // POST - Create new resource(s)
-export const POST: RequestHandler = async ({ request }) => {
-	const credentials = getK8sCredentials(request);
-	if (!credentials) {
-		return unauthorizedResponse();
+export const POST: RequestHandler = async (event) => {
+	const resolved = await resolveK8sCredentials(event);
+	if ('error' in resolved) {
+		return credentialErrorResponse(resolved.error);
 	}
+	const credentials = resolved.credentials;
+	const { request } = event;
 
 	try {
 		const body = await request.json();
@@ -144,11 +147,13 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 // PUT - Update existing resource
-export const PUT: RequestHandler = async ({ request }) => {
-	const credentials = getK8sCredentials(request);
-	if (!credentials) {
-		return unauthorizedResponse();
+export const PUT: RequestHandler = async (event) => {
+	const resolved = await resolveK8sCredentials(event);
+	if ('error' in resolved) {
+		return credentialErrorResponse(resolved.error);
 	}
+	const credentials = resolved.credentials;
+	const { request } = event;
 
 	try {
 		const body = await request.json();
@@ -246,11 +251,13 @@ export const PUT: RequestHandler = async ({ request }) => {
 };
 
 // DELETE - Delete resource
-export const DELETE: RequestHandler = async ({ request }) => {
-	const credentials = getK8sCredentials(request);
-	if (!credentials) {
-		return unauthorizedResponse();
+export const DELETE: RequestHandler = async (event) => {
+	const resolved = await resolveK8sCredentials(event);
+	if ('error' in resolved) {
+		return credentialErrorResponse(resolved.error);
 	}
+	const credentials = resolved.credentials;
+	const { request } = event;
 
 	try {
 		const body = await request.json();

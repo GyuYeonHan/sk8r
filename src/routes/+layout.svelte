@@ -30,46 +30,44 @@
 
 		document.addEventListener('keydown', handleKeydown);
 
-		// Check if any clusters exist, if not prompt for first cluster
-		// All clusters are now stored client-side in localStorage (no kubeconfig dependency)
 		if (browser) {
-			// Wait a bit for clusterStore to initialize from localStorage
-			setTimeout(async () => {
+			const bootstrapClusters = async () => {
+				try {
+					await clusterStore.fetchContexts();
+				} catch (err) {
+					console.warn('Failed to fetch clusters:', err);
+				}
+
 				const clusterState = get(clusterStore);
 				const hasCustomClusters = clusterState.customClusters.length > 0;
-				
+
 				if (!hasCustomClusters) {
-					// No clusters found, prompt for first cluster
 					const serverInput = prompt('Please enter your Kubernetes server address:\n(hostname/IP or full URL like https://kubernetes.example.com:6443)');
-					if (serverInput) {
-						const token = prompt('Please enter your Kubernetes bearer token:');
-						if (token) {
-							try {
-								// Normalize server URL (add https:// and :6443 if needed)
-								let normalizedServer = serverInput.trim();
-								if (!normalizedServer.startsWith('http://') && !normalizedServer.startsWith('https://')) {
-									// Add https:// and default port
-									const hasPort = /:\d+$/.test(normalizedServer);
-									normalizedServer = hasPort ? `https://${normalizedServer}` : `https://${normalizedServer}:6443`;
-								} else if (normalizedServer.startsWith('http://')) {
-									normalizedServer = normalizedServer.replace('http://', 'https://');
-								}
-								// Remove trailing slash
-								normalizedServer = normalizedServer.replace(/\/+$/, '');
-								
-								const newCluster = await clusterStore.addCluster(normalizedServer, token);
-								// Auto-switch to the new cluster
-								clusterStore.switchToCustomCluster(newCluster.id);
-								// Reload to apply the new cluster
-								window.location.reload();
-							} catch (err) {
-								console.error('Failed to add cluster:', err);
-								alert(`Failed to add cluster: ${err instanceof Error ? err.message : 'Unknown error'}`);
-							}
+					if (!serverInput) return;
+
+					const token = prompt('Please enter your Kubernetes bearer token:');
+					if (!token) return;
+
+					try {
+						let normalizedServer = serverInput.trim();
+						if (!normalizedServer.startsWith('http://') && !normalizedServer.startsWith('https://')) {
+							const hasPort = /:\d+$/.test(normalizedServer);
+							normalizedServer = hasPort ? `https://${normalizedServer}` : `https://${normalizedServer}:6443`;
+						} else if (normalizedServer.startsWith('http://')) {
+							normalizedServer = normalizedServer.replace('http://', 'https://');
 						}
+						normalizedServer = normalizedServer.replace(/\/+$/, '');
+
+						const newCluster = await clusterStore.addCluster(normalizedServer, token);
+						await clusterStore.switchToCustomCluster(newCluster.id);
+					} catch (err) {
+						console.error('Failed to add cluster:', err);
+						alert(`Failed to add cluster: ${err instanceof Error ? err.message : 'Unknown error'}`);
 					}
 				}
-			}, 100);
+			};
+
+			bootstrapClusters();
 		}
 		
 		return () => {
