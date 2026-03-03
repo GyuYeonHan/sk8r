@@ -2,8 +2,10 @@
 	import { onMount } from 'svelte';
 	import { Search, Command, ArrowRight } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { navigation } from '$lib/stores/navigation';
 	import { apiClient } from '$lib/utils/apiClient';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	
 	interface SearchResult {
 		name: string;
@@ -125,20 +127,20 @@
 
 	function selectResult(result: SearchResult) {
 		// Navigate to the resource
-		navigation.selectResource(result.resourceType);
-		navigation.setNamespace(result.namespace === 'N/A' ? '*' : result.namespace);
-		
-		const params = new URLSearchParams();
-		params.set('resource', result.resourceType);
-		if (result.namespace !== 'N/A') {
-			params.set('namespace', result.namespace);
-		} else {
-			params.set('namespace', '*');
+			navigation.selectResource(result.resourceType);
+			navigation.setNamespace(result.namespace === 'N/A' ? '*' : result.namespace);
+			
+			const params = new SvelteURLSearchParams();
+			params.set('resource', result.resourceType);
+			if (result.namespace !== 'N/A') {
+				params.set('namespace', result.namespace);
+			} else {
+				params.set('namespace', '*');
+			}
+			
+			goto(resolve(`/?${params.toString()}`));
+			onClose();
 		}
-		
-		goto(`/?${params.toString()}`);
-		onClose();
-	}
 </script>
 
 {#if isOpen}

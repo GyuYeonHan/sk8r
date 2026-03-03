@@ -3,12 +3,14 @@
 	import { onMount } from 'svelte';
 	import { ArrowLeft, Edit, Trash2, ScrollText } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import type { K8sResource } from '$lib/types/k8s';
 	import PodLogsViewer from '$lib/components/PodLogsViewer.svelte';
 	import { apiClient } from '$lib/utils/apiClient';
 	import { browser } from '$app/environment';
 	import { clusterStore } from '$lib/stores/cluster';
 	import { get } from 'svelte/store';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	
 	// Lazy load ResourceCreator to avoid SSR issues with shiki/js-yaml
 	let ResourceCreator: any = $state(null);
@@ -50,9 +52,9 @@
 		isLoading = true;
 		clientError = null;
 		
-		try {
-			const params = new URLSearchParams();
-			params.set('namespace', data.namespace);
+			try {
+				const params = new SvelteURLSearchParams();
+				params.set('namespace', data.namespace);
 			
 			const response = await apiClient(`/api/resources/${data.resourceType}/${data.name}?${params.toString()}`);
 			
@@ -97,14 +99,14 @@
 		return resource.spec.containers.map((c: { name: string }) => c.name);
 	});
 
-	function goBack() {
-		const params = new URLSearchParams();
-		params.set('resource', data.resourceType);
-		if (data.namespace !== 'default') {
-			params.set('namespace', data.namespace);
+		function goBack() {
+			const params = new SvelteURLSearchParams();
+			params.set('resource', data.resourceType);
+			if (data.namespace !== 'default') {
+				params.set('namespace', data.namespace);
+			}
+			goto(resolve(`/?${params.toString()}`));
 		}
-		goto(`/?${params.toString()}`);
-	}
 
 	function getAge(timestamp: string | undefined): string {
 		if (!timestamp) return 'Unknown';

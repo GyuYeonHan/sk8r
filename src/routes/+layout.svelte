@@ -9,14 +9,13 @@
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
-	import type { AppPermission, AuthUser } from '$lib/types/auth';
+	import type { AuthUser } from '$lib/types/auth';
 
 	interface Props {
 		children: import('svelte').Snippet;
 		data: {
 			user: AuthUser | null;
 			isAdmin: boolean;
-			permissions: AppPermission[];
 		};
 	}
 

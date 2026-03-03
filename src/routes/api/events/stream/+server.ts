@@ -3,6 +3,11 @@ import { Watch, CoreV1Api } from '@kubernetes/client-node';
 import { createKubeConfig, credentialErrorResponse } from '$lib/server/k8sAuth';
 import { resolveK8sCredentials } from '$lib/server/clusterContext';
 
+function isAbortLikeError(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	return error.name === 'AbortError' || error.message.toLowerCase().includes('abort');
+}
+
 export const GET: RequestHandler = async (event) => {
 	const resolved = await resolveK8sCredentials(event);
 	if ('error' in resolved) {
@@ -30,12 +35,35 @@ export const GET: RequestHandler = async (event) => {
 	const kc = createKubeConfig(credentials.server, credentials.token, credentials.skipTLSVerify);
 	const watch = new Watch(kc);
 	const coreApi = kc.makeApiClient(CoreV1Api);
+	let watchAbortController: AbortController | null = null;
+
+	const cleanupWatch = () => {
+		if (!watchAbortController) return;
+		watchAbortController.abort();
+		watchAbortController = null;
+	};
+
+	const onRequestAbort = () => {
+		cleanupWatch();
+	};
+
+	event.request.signal.addEventListener('abort', onRequestAbort, { once: true });
 
 	// Create a readable stream for SSE
 	const stream = new ReadableStream({
 		async start(controller) {
 			const encoder = new TextEncoder();
-			let abortController: AbortController | null = null;
+			let streamClosed = false;
+
+			const closeStreamSafely = () => {
+				if (streamClosed) return;
+				streamClosed = true;
+				try {
+					controller.close();
+				} catch {
+					// Stream may already be closed/cancelled
+				}
+			};
 
 			const sendEvent = (data: any, event?: string) => {
 				try {
@@ -45,7 +73,7 @@ export const GET: RequestHandler = async (event) => {
 					}
 					message += `data: ${JSON.stringify(data)}\n\n`;
 					controller.enqueue(encoder.encode(message));
-				} catch (err) {
+				} catch {
 					// Controller might be closed
 				}
 			};
@@ -89,36 +117,31 @@ export const GET: RequestHandler = async (event) => {
 				}
 
 				// Start watching for new events
-				const req = await watch.watch(
+				watchAbortController = await watch.watch(
 					watchPath,
 					queryParams,
 					(type, apiObj) => {
 						sendEvent(formatEvent(apiObj, type), 'event');
 					},
 					(err) => {
-						if (err) {
+						if (err && !isAbortLikeError(err)) {
 							sendEvent({ message: `Watch error: ${err.message}` }, 'error');
 						}
 						sendEvent({ message: 'Watch ended' }, 'end');
-						controller.close();
+						watchAbortController = null;
+						closeStreamSafely();
 					}
 				);
-
-				// Store abort controller for cleanup
-				abortController = new AbortController();
-				abortController.signal.addEventListener('abort', () => {
-					req.abort();
-				});
-
 			} catch (error) {
 				const message = error instanceof Error ? error.message : 'Unknown error';
 				sendEvent({ message: `Failed to start events stream: ${message}` }, 'error');
-				controller.close();
+				closeStreamSafely();
 			}
 		},
 
 		cancel() {
 			console.log('Client disconnected from events stream');
+			cleanupWatch();
 		}
 	});
 

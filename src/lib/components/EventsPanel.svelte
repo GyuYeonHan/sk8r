@@ -13,6 +13,7 @@
 		X,
 		Filter
 	} from 'lucide-svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 	interface K8sEvent {
 		watchType: string;
@@ -63,11 +64,6 @@
 	let events = $state<K8sEvent[]>([]);
 	let isCollapsed = $state(collapsed);
 	let isConnected = $state(false);
-	
-	// Sync internal state with prop changes
-	$effect(() => {
-		isCollapsed = collapsed;
-	});
 	let isLoading = $state(false);
 	let isPaused = $state(false);
 	let error = $state<string | null>(null);
@@ -88,7 +84,7 @@
 	let warningCount = $derived(events.filter(e => e.type === 'Warning').length);
 
 	function buildStreamUrl(): string {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		if (namespace) params.set('namespace', namespace);
 		if (filterKind) params.set('kind', filterKind);
 		if (filterName) params.set('name', filterName);

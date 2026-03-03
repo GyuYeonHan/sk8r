@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { SvelteMap } from 'svelte/reactivity';
 	import {
 		Server,
 		Box,
@@ -10,7 +12,6 @@
 		HardDrive,
 		Activity,
 		TrendingUp,
-		TrendingDown,
 		Minus,
 		AlertTriangle,
 		CheckCircle2,
@@ -32,12 +33,14 @@
 	let { config }: Props = $props();
 
 	// State for card values
-	let cardValues = $state<Map<string, { value: number; status?: number; loading: boolean; error?: string }>>(new Map());
-	let chartData = $state<Map<string, MetricSeries[]>>(new Map());
+	let cardValues = new SvelteMap<
+		string,
+		{ value: number; status?: number; loading: boolean; error?: string }
+	>();
+	let chartData = new SvelteMap<string, MetricSeries[]>();
 	let chartsLoading = $state(true);
 	let lastRefresh = $state<Date>(new Date());
 	let intervalId: ReturnType<typeof setInterval> | null = null;
-	let dataSourceType = $state<'prometheus' | 'kubernetes'>('prometheus');
 	let countdownSeconds = $state(30);
 	let countdownIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -239,22 +242,12 @@
 		activity: Activity
 	};
 
-	const colorClasses: Record<string, { bg: string; text: string; border: string; icon: string }> = {
-		blue: { bg: 'bg-blue-50 dark:bg-blue-900/30', text: 'text-blue-900 dark:text-blue-100', border: 'border-blue-200 dark:border-blue-700', icon: 'text-blue-500 dark:text-blue-400' },
-		green: { bg: 'bg-green-50 dark:bg-green-900/30', text: 'text-green-900 dark:text-green-100', border: 'border-green-200 dark:border-green-700', icon: 'text-green-500 dark:text-green-400' },
-		yellow: { bg: 'bg-yellow-50 dark:bg-yellow-900/30', text: 'text-yellow-900 dark:text-yellow-100', border: 'border-yellow-200 dark:border-yellow-700', icon: 'text-yellow-500 dark:text-yellow-400' },
-		red: { bg: 'bg-red-50 dark:bg-red-900/30', text: 'text-red-900 dark:text-red-100', border: 'border-red-200 dark:border-red-700', icon: 'text-red-500 dark:text-red-400' },
-		purple: { bg: 'bg-purple-50 dark:bg-purple-900/30', text: 'text-purple-900 dark:text-purple-100', border: 'border-purple-200 dark:border-purple-700', icon: 'text-purple-500 dark:text-purple-400' },
-		cyan: { bg: 'bg-cyan-50 dark:bg-cyan-900/30', text: 'text-cyan-900 dark:text-cyan-100', border: 'border-cyan-200 dark:border-cyan-700', icon: 'text-cyan-500 dark:text-cyan-400' },
-		orange: { bg: 'bg-orange-50 dark:bg-orange-900/30', text: 'text-orange-900 dark:text-orange-100', border: 'border-orange-200 dark:border-orange-700', icon: 'text-orange-500 dark:text-orange-400' },
-		gray: { bg: 'bg-gray-50 dark:bg-gray-900/30', text: 'text-gray-900 dark:text-gray-100', border: 'border-gray-200 dark:border-gray-700', icon: 'text-gray-500 dark:text-gray-400' }
-	};
-
 	function formatValue(value: number, format: string): string {
 		switch (format) {
-			case 'percentage':
+			case 'percentage': {
 				return `${value.toFixed(1)}%`;
-			case 'bytes':
+			}
+			case 'bytes': {
 				const units = ['B', 'KB', 'MB', 'GB', 'TB'];
 				let size = value;
 				let unitIndex = 0;
@@ -263,10 +256,12 @@
 					unitIndex++;
 				}
 				return `${size.toFixed(1)} ${units[unitIndex]}`;
-			case 'duration':
+			}
+			case 'duration': {
 				const hours = Math.floor(value / 3600);
 				const minutes = Math.floor((value % 3600) / 60);
 				return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+			}
 			default:
 				return value.toLocaleString();
 		}
@@ -275,7 +270,6 @@
 	async function fetchCardValue(card: DashboardCardConfig) {
 		const current = cardValues.get(card.id) || { value: 0, loading: true };
 		cardValues.set(card.id, { ...current, loading: true });
-		cardValues = new Map(cardValues);
 
 		try {
 			// Fetch main value
@@ -306,15 +300,13 @@
 			}
 
 			cardValues.set(card.id, { value, status, loading: false });
-			cardValues = new Map(cardValues);
 		} catch (error) {
 			console.error(`Error fetching card ${card.id}:`, error);
-			cardValues.set(card.id, { 
-				value: 0, 
-				loading: false, 
-				error: error instanceof Error ? error.message : 'Unknown error' 
+			cardValues.set(card.id, {
+				value: 0,
+				loading: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
 			});
-			cardValues = new Map(cardValues);
 		}
 	}
 
@@ -327,7 +319,6 @@
 			}
 			
 			const stats = await response.json();
-			dataSourceType = 'kubernetes';
 			dataSourceStore.update('kubernetes', true);
 			
 			// Map K8s API stats to card values
@@ -339,12 +330,11 @@
 				services: { value: stats.services.total },
 				pvcs: { value: stats.pvcs.total, status: stats.pvcs.bound }
 			};
-			
+
 			for (const [id, data] of Object.entries(mappings)) {
 				cardValues.set(id, { ...data, loading: false });
 			}
-			cardValues = new Map(cardValues);
-			
+
 			return true;
 		} catch (error) {
 			console.error('Failed to fetch K8s API stats:', error);
@@ -381,13 +371,11 @@
 
 	async function fetchChartData() {
 		chartsLoading = true;
-		
+
 		// Determine the end timestamp - use current time if useCurrentEndTime is enabled
 		const now = Math.floor(Date.now() / 1000);
-		const effectiveEndTimestamp = (isCustomRangeActive && useCurrentEndTime) 
-			? now 
-			: (customEndTimestamp ?? now);
-		
+		const effectiveEndTimestamp = isCustomRangeActive && useCurrentEndTime ? now : (customEndTimestamp ?? now);
+
 		// Calculate step based on time range
 		let rangeMinutes: number;
 		if (isCustomRangeActive && customStartTimestamp) {
@@ -407,7 +395,7 @@
 					for (const q of chart.queries) {
 						const queryUrl = buildQueryUrl(q.query, step, effectiveEndTimestamp);
 						const response = await apiClient(queryUrl);
-						
+
 						if (!response.ok) {
 							console.error(`Chart query failed for ${chart.id} - ${q.label}`);
 							continue;
@@ -430,7 +418,7 @@
 				else if (chart.query) {
 					const queryUrl = buildQueryUrl(chart.query, step, effectiveEndTimestamp);
 					const response = await apiClient(queryUrl);
-					
+
 					if (!response.ok) {
 						console.error(`Chart query failed for ${chart.id}`);
 						continue;
@@ -457,7 +445,6 @@
 			}
 		}
 
-		chartData = new Map(chartData);
 		chartsLoading = false;
 		lastRefresh = new Date();
 	}
@@ -478,7 +465,6 @@
 			console.log('Prometheus unavailable, falling back to Kubernetes API');
 			await fetchStatsFromK8sApi();
 		} else {
-			dataSourceType = 'prometheus';
 			dataSourceStore.update('prometheus', true);
 		}
 		
@@ -541,7 +527,14 @@
 
 	function handleCardClick(card: DashboardCardConfig) {
 		if (card.link) {
-			goto(card.link);
+			if (card.link.startsWith('/')) {
+				goto(resolve(card.link));
+				return;
+			}
+
+			if (typeof window !== 'undefined') {
+				window.location.assign(card.link);
+			}
 		}
 	}
 
@@ -582,13 +575,13 @@
 					<span class="text-sm font-medium">{getSelectedTimeRangeLabel()}</span>
 					<ChevronDown size={14} class="transition-transform {timeRangeDropdownOpen ? 'rotate-180' : ''}" />
 				</button>
-				{#if timeRangeDropdownOpen}
-					<div class="absolute right-0 mt-1 w-32 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg z-50 overflow-hidden">
-						{#each timeRangeOptions as option}
-							<button
-								onclick={() => selectTimeRange(option.value)}
-								class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors {selectedTimeRange === option.value ? 'bg-gray-100 dark:bg-slate-700 font-medium text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-slate-300'}"
-							>
+					{#if timeRangeDropdownOpen}
+						<div class="absolute right-0 mt-1 w-32 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg z-50 overflow-hidden">
+							{#each timeRangeOptions as option (option.value)}
+								<button
+									onclick={() => selectTimeRange(option.value)}
+									class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors {selectedTimeRange === option.value ? 'bg-gray-100 dark:bg-slate-700 font-medium text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-slate-300'}"
+								>
 								{option.label}
 							</button>
 						{/each}
@@ -605,13 +598,12 @@
 		</div>
 	</div>
 
-	<!-- Summary Cards -->
-	<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-		{#each config.cards as card}
-			{@const data = cardValues.get(card.id) || { value: 0, loading: true }}
-			{@const colors = colorClasses[card.color]}
-			{@const Icon = iconMap[card.icon] || Box}
-			{@const statusIndicator = getStatusIndicator(card, data)}
+		<!-- Summary Cards -->
+		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+			{#each config.cards as card (card.id)}
+				{@const data = cardValues.get(card.id) || { value: 0, loading: true }}
+				{@const Icon = iconMap[card.icon] || Box}
+				{@const statusIndicator = getStatusIndicator(card, data)}
 			
 			<button
 				onclick={() => handleCardClick(card)}
@@ -650,11 +642,11 @@
 		{/each}
 	</div>
 
-	<!-- Charts Grid - 4 columns on large screens -->
-	<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-		{#each config.charts as chart}
-			{@const data = chartData.get(chart.id) || []}
-			<div class="chart-card bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-4 shadow-sm">
+		<!-- Charts Grid - 4 columns on large screens -->
+		<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+			{#each config.charts as chart (chart.id)}
+				{@const data = chartData.get(chart.id) || []}
+				<div class="chart-card bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-4 shadow-sm">
 				{#if chartsLoading && data.length === 0}
 					<div class="flex items-center justify-center h-[200px]">
 						<LoaderCircle size={32} class="animate-spin text-gray-400 dark:text-slate-500" />
@@ -677,13 +669,13 @@
 		<div class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-5 text-white">
 			<h3 class="font-semibold mb-2">Quick Navigation</h3>
 			<p class="text-sm text-gray-300 mb-3">Jump to commonly used resources</p>
-			<div class="flex flex-wrap gap-2">
-				<a href="/?resource=pods" class="px-3 py-1 bg-white/10 rounded-full text-xs hover:bg-white/20 transition-colors">Pods</a>
-				<a href="/?resource=deployments" class="px-3 py-1 bg-white/10 rounded-full text-xs hover:bg-white/20 transition-colors">Deployments</a>
-				<a href="/?resource=services" class="px-3 py-1 bg-white/10 rounded-full text-xs hover:bg-white/20 transition-colors">Services</a>
-				<a href="/?resource=configmaps" class="px-3 py-1 bg-white/10 rounded-full text-xs hover:bg-white/20 transition-colors">ConfigMaps</a>
+				<div class="flex flex-wrap gap-2">
+					<a href={resolve('/?resource=pods')} class="px-3 py-1 bg-white/10 rounded-full text-xs hover:bg-white/20 transition-colors">Pods</a>
+					<a href={resolve('/?resource=deployments')} class="px-3 py-1 bg-white/10 rounded-full text-xs hover:bg-white/20 transition-colors">Deployments</a>
+					<a href={resolve('/?resource=services')} class="px-3 py-1 bg-white/10 rounded-full text-xs hover:bg-white/20 transition-colors">Services</a>
+					<a href={resolve('/?resource=configmaps')} class="px-3 py-1 bg-white/10 rounded-full text-xs hover:bg-white/20 transition-colors">ConfigMaps</a>
+				</div>
 			</div>
-		</div>
 		
 		<div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-5 text-white">
 			<h3 class="font-semibold mb-2">Keyboard Shortcuts</h3>
@@ -1018,4 +1010,3 @@
 		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 	}
 </style>
-

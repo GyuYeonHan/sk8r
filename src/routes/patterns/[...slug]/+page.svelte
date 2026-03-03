@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { ArrowLeft, BookOpen } from 'lucide-svelte';
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
+	import { sanitizeHtml } from '$lib/utils/sanitizeHtml';
 
 	let { data } = $props();
+	let safeHtml = $derived(sanitizeHtml(data.html));
 
 	onMount(async () => {
 		// Dynamically import mermaid to avoid SSR issues
@@ -57,11 +60,11 @@
 <div class="min-h-screen bg-gray-950">
 	<!-- Header -->
 	<header class="sticky top-0 z-10 bg-gray-900/95 backdrop-blur border-b border-gray-800">
-		<div class="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
-			<a 
-				href="/" 
-				class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-			>
+			<div class="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
+				<a 
+					href={resolve('/')} 
+					class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+				>
 				<ArrowLeft size={20} />
 				<span class="text-sm">Back to Dashboard</span>
 			</a>
@@ -73,13 +76,14 @@
 		</div>
 	</header>
 
-	<!-- Content -->
-	<main class="max-w-4xl mx-auto px-6 py-8">
-		<article class="prose prose-invert prose-lg max-w-none">
-			{@html data.html}
-		</article>
-	</main>
-</div>
+		<!-- Content -->
+		<main class="max-w-4xl mx-auto px-6 py-8">
+			<article class="prose prose-invert prose-lg max-w-none">
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+				{@html safeHtml}
+			</article>
+		</main>
+	</div>
 
 <style>
 	/* Custom prose styling for dark theme */
@@ -264,4 +268,3 @@
 		margin: 0 auto;
 	}
 </style>
-

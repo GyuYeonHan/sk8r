@@ -8,6 +8,7 @@
 	import type { K8sResource } from '$lib/types/k8s';
 	import type { MetricChartConfig, MetricSeries } from '$lib/types/metricsTypes';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { apiClient } from '$lib/utils/apiClient';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
@@ -15,6 +16,7 @@
 	import { resourceCreator } from '$lib/stores/resourceCreator';
 	import { clusterStore } from '$lib/stores/cluster';
 	import { get } from 'svelte/store';
+	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	
 	// Lazy load components to avoid SSR issues with shiki/js-yaml
 	let ResourceCreator: any = $state(null);
@@ -29,7 +31,6 @@
 			error?: string;
 			metricsEnabled?: boolean;
 			metricsCharts?: MetricChartConfig[];
-			loadClientSide?: boolean;
 		};
 	}
 
@@ -49,30 +50,30 @@
 	// Load resources client-side
 	async function loadResources() {
 		if (!browser) return;
-		
+
 		const clusterState = get(clusterStore);
 		if (!clusterState.currentCustomClusterId) {
 			clientError = 'No cluster selected. Please add a cluster first.';
 			return;
 		}
-		
+
 		if (!data.resourceType || data.resourceType === 'overview') return;
-		
+
 		isLoading = true;
 		clientError = null;
-		
+
 		try {
-			const params = new URLSearchParams();
+			const params = new SvelteURLSearchParams();
 			params.set('type', data.resourceType);
 			params.set('namespace', data.namespace);
-			
+
 			const response = await apiClient(`/api/resources/list?${params.toString()}`);
-			
+
 			if (!response.ok) {
 				const result = await response.json();
 				throw new Error(result.error || result.message || 'Failed to load resources');
 			}
-			
+
 			const result = await response.json();
 			clientResources = result.items || [];
 		} catch (err) {
@@ -133,18 +134,18 @@
 	// After initialization, sync URL FROM store changes (user interactions)
 	$effect(() => {
 		if (!initialized) return;
-		
+
 		if ($navigation.selectedResource !== data.resourceType || $navigation.namespace !== data.namespace) {
-			const params = new URLSearchParams();
+			const params = new SvelteURLSearchParams();
 			if ($navigation.selectedResource && $navigation.selectedResource !== 'overview') {
 				params.set('resource', $navigation.selectedResource);
 			}
 			if ($navigation.namespace && $navigation.namespace !== 'default') {
 				params.set('namespace', $navigation.namespace);
 			}
-			
+
 			const queryString = params.toString();
-			goto(queryString ? `/?${queryString}` : '/', { replaceState: true });
+			goto(resolve(queryString ? `/?${queryString}` : '/'), { replaceState: true });
 		}
 	});
 
@@ -284,7 +285,7 @@
 
 	async function fetchNodeMetrics(): Promise<Map<string, MetricSeries[]>> {
 		console.log('Fetching node metrics...');
-		const metricsMap = new Map<string, MetricSeries[]>();
+		const metricsMap = new SvelteMap<string, MetricSeries[]>();
 
 		try {
 			for (const chart of data.metricsCharts ?? []) {
@@ -365,18 +366,17 @@
 		{#if data.metricsEnabled && data.metricsCharts && data.metricsCharts.length > 0}
 			<MetricsPanel
 				charts={data.metricsCharts}
-				resourceType={data.resourceType}
 				fetchMetrics={fetchNodeMetrics}
 			/>
 		{/if}
-		
+
 		{#if isLoading}
 			<div class="flex items-center justify-center p-8">
 				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
 				<span class="ml-3 text-gray-600 dark:text-gray-400">Loading resources...</span>
 			</div>
 		{:else}
-				<ResourceList
+			<ResourceList
 				resourceType={data.resourceType}
 				resources={resources}
 				namespace={data.namespace}

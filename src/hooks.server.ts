@@ -5,7 +5,6 @@ import { assertAuthSessionSecretConfigured, readAuthSession } from '$lib/server/
 
 // Global WebSocket server reference (set by custom server or vite plugin)
 declare global {
-	// eslint-disable-next-line no-var
 	var __wss: import('ws').WebSocketServer | undefined;
 }
 

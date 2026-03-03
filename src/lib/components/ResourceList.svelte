@@ -8,6 +8,7 @@
 	import { learningContent } from '$lib/config/navigationConfig';
 	import { learningMode } from '$lib/stores/learningMode';
 	import type { LearningContent } from '$lib/types/navigationConfig';
+	import { resolve } from '$app/paths';
 
 	interface Props {
 		resourceType: string;
@@ -226,16 +227,15 @@
 				</div>
 			{/if}
 			
-			<!-- Documentation link -->
-			<a 
-				href={docsUrl}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors shadow-md hover:shadow-lg"
-			>
-				<ExternalLink size={16} />
-				Docs
-			</a>
+				<!-- Documentation link -->
+				<button
+					type="button"
+					onclick={() => window.open(docsUrl, '_blank', 'noopener,noreferrer')}
+					class="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors shadow-md hover:shadow-lg"
+				>
+					<ExternalLink size={16} />
+					Docs
+				</button>
 			
 			<!-- Decorative element -->
 			<div class="absolute -bottom-2 -right-2 w-24 h-24 bg-amber-200/30 rounded-full blur-2xl pointer-events-none"></div>
@@ -347,11 +347,11 @@
 					<tr class="hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
 						{#each columnWidths.columns as column}
 							<td class="px-6 py-4 text-sm overflow-hidden text-ellipsis whitespace-nowrap" title={getColumnValue(resource, column)}>
-								{#if column.type === 'link'}
-									<a
-										href="/{resourceType}/{resource.metadata.name}?namespace={resource.metadata.namespace || 'default'}"
-										class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-									>
+									{#if column.type === 'link'}
+										<a
+											href={resolve(`/${resourceType}/${resource.metadata.name}?namespace=${resource.metadata.namespace || 'default'}`)}
+											class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+										>
 										{getColumnValue(resource, column)}
 									</a>
 								{:else if column.type === 'badge'}

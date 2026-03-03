@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { AlertCircle, Check, Copy, CheckCheck } from 'lucide-svelte';
+	import { sanitizeHtml } from '$lib/utils/sanitizeHtml';
 
 	interface Props {
 		value: string;
@@ -14,6 +15,7 @@
 	let highlighter: any = $state(null);
 	let yamlModule: any = $state(null);
 	let highlightedHtml = $state('');
+	let sanitizedHighlightedHtml = $derived(sanitizeHtml(highlightedHtml));
 	let error = $state<{ message: string; line?: number } | null>(null);
 	let textareaRef = $state<HTMLTextAreaElement | null>(null);
 	let preRef = $state<HTMLPreElement | null>(null);
@@ -205,16 +207,17 @@
 		<!-- Code area with overlay -->
 		<div class="code-area flex-1 relative overflow-hidden">
 			<!-- Syntax highlighted background -->
-			<pre
-				bind:this={preRef}
-				class="highlighted-code absolute inset-0 m-0 p-3 overflow-auto pointer-events-none"
-			>
-				{#if highlightedHtml}
-					{@html highlightedHtml}
-				{:else}
-					<code class="text-gray-300">{value}</code>
-				{/if}
-			</pre>
+				<pre
+					bind:this={preRef}
+					class="highlighted-code absolute inset-0 m-0 p-3 overflow-auto pointer-events-none"
+				>
+					{#if sanitizedHighlightedHtml}
+						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+						{@html sanitizedHighlightedHtml}
+					{:else}
+						<code class="text-gray-300">{value}</code>
+					{/if}
+				</pre>
 
 			<!-- Transparent textarea for editing -->
 			{#if !readonly}

@@ -11,6 +11,7 @@
 	import { namespaceStore } from '$lib/stores/namespaces';
 	import { resourceCreator } from '$lib/stores/resourceCreator';
 	import type { AuthUser } from '$lib/types/auth';
+	import { resolve } from '$app/paths';
 
 	interface Props {
 		isAdmin?: boolean;
@@ -274,12 +275,12 @@
 	}
 </script>
 
-<aside class="w-64 bg-gray-900 text-gray-100 h-full flex flex-col">
-	<div class="px-4 pt-4 pb-1 border-b border-gray-800">
-		<a href="/" class="block" onclick={() => navigation.reset()}>
-			<h1 class="text-xl font-bold flex items-center gap-2">
-				<Box class="w-6 h-6" />
-				SK8R
+	<aside class="w-64 bg-gray-900 text-gray-100 h-full flex flex-col">
+		<div class="px-4 pt-4 pb-1 border-b border-gray-800">
+			<a href={resolve('/')} class="block" onclick={() => navigation.reset()}>
+				<h1 class="text-xl font-bold flex items-center gap-2">
+					<Box class="w-6 h-6" />
+					SK8R
 			</h1>
 			<p class="text-sm text-gray-400 mt-1">Kubernetes Management</p>
 		</a>
@@ -374,13 +375,13 @@
 
 			{#if patternsExpanded}
 				<div class="ml-6 mt-1">
-					{#each designPatterns as pattern (pattern.key)}
-						{@const PatternIcon = getIcon(pattern.icon)}
-						<a
-							href="/patterns/{pattern.key}"
-							class="w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-800 transition-colors text-left text-sm block"
-							title={pattern.description}
-						>
+						{#each designPatterns as pattern (pattern.key)}
+							{@const PatternIcon = getIcon(pattern.icon)}
+							<a
+								href={resolve(`/patterns/${pattern.key}`)}
+								class="w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-800 transition-colors text-left text-sm block"
+								title={pattern.description}
+							>
 							<PatternIcon size={14} class="text-amber-400" />
 							<span class="text-gray-300">{pattern.label}</span>
 						</a>

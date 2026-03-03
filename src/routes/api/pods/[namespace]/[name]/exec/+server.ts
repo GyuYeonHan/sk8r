@@ -3,7 +3,7 @@ import { requirePermission } from '$lib/server/auth/guards';
 
 // This endpoint handles the initial HTTP request for WebSocket upgrade
 // The actual WebSocket connection is handled by the Vite plugin (dev) or custom server (prod)
-// in src/lib/server/websocket.ts
+// via a shared runtime module rooted at /websocket.js (dev imports through src/lib/server/websocket.ts)
 
 export const GET: RequestHandler = async (event) => {
 	const permissionError = requirePermission(event, 'pod:exec');

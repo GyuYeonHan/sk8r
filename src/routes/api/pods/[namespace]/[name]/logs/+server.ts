@@ -22,19 +22,54 @@ export const GET: RequestHandler = async (event) => {
 	// Load kubeconfig from credentials
 	const kc = createKubeConfig(credentials.server, credentials.token, credentials.skipTLSVerify);
 	const log = new Log(kc);
+	let logAbortController: AbortController | null = null;
+	let logStreamRef: Writable | null = null;
+	let endTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const cleanupLogStream = () => {
+		if (endTimer) {
+			clearTimeout(endTimer);
+			endTimer = null;
+		}
+		if (logAbortController) {
+			logAbortController.abort();
+			logAbortController = null;
+		}
+		if (logStreamRef && !logStreamRef.destroyed) {
+			logStreamRef.destroy();
+		}
+		logStreamRef = null;
+	};
+
+	event.request.signal.addEventListener('abort', cleanupLogStream, { once: true });
 
 	// Create a readable stream for SSE
 	const stream = new ReadableStream({
 		async start(controller) {
 			const encoder = new TextEncoder();
+			let streamClosed = false;
+
+			const closeStreamSafely = () => {
+				if (streamClosed) return;
+				streamClosed = true;
+				try {
+					controller.close();
+				} catch {
+					// Stream may already be closed/cancelled
+				}
+			};
 
 			const sendEvent = (data: string, event?: string) => {
-				let message = '';
-				if (event) {
-					message += `event: ${event}\n`;
+				try {
+					let message = '';
+					if (event) {
+						message += `event: ${event}\n`;
+					}
+					message += `data: ${JSON.stringify(data)}\n\n`;
+					controller.enqueue(encoder.encode(message));
+				} catch {
+					// Stream may already be closed/cancelled
 				}
-				message += `data: ${JSON.stringify(data)}\n\n`;
-				controller.enqueue(encoder.encode(message));
 			};
 
 			try {
@@ -67,20 +102,21 @@ export const GET: RequestHandler = async (event) => {
 							sendEvent(buffer, 'log');
 						}
 						sendEvent('Log stream ended', 'end');
-						controller.close();
+						closeStreamSafely();
 						callback();
 					}
 				});
+				logStreamRef = logStream;
 
 				logStream.on('error', (err) => {
 					sendEvent(`Error: ${err.message}`, 'error');
-					controller.close();
+					closeStreamSafely();
 				});
 
 				// Start streaming logs
 				// Container is required, use first container if not specified
 				const containerName = container || 'main';
-				await log.log(
+				logAbortController = await log.log(
 					namespace,
 					name,
 					containerName,
@@ -96,19 +132,25 @@ export const GET: RequestHandler = async (event) => {
 				// If not following, the stream will end naturally
 				if (!follow) {
 					// Give some time for the stream to complete
-					await new Promise(resolve => setTimeout(resolve, 1000));
-					logStream.end(); // Signal end of stream
+					endTimer = setTimeout(() => {
+						if (logStreamRef && !logStreamRef.destroyed) {
+							logStreamRef.end(); // Signal end of stream
+						}
+						endTimer = null;
+					}, 1000);
 				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : 'Unknown error';
 				sendEvent(`Failed to stream logs: ${message}`, 'error');
-				controller.close();
+				closeStreamSafely();
+				cleanupLogStream();
 			}
 		},
 
 		cancel() {
 			// Cleanup when client disconnects
 			console.log('Client disconnected from log stream');
+			cleanupLogStream();
 		}
 	});
 

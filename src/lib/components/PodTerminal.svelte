@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { X, RefreshCw, ChevronDown, Maximize2, Minimize2 } from 'lucide-svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 	interface Props {
 		podName: string;
@@ -99,7 +100,7 @@
 	}
 
 	function buildExecUrl(): string {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		if (selectedContainer) params.set('container', selectedContainer);
 		params.set('command', '/bin/sh');
 

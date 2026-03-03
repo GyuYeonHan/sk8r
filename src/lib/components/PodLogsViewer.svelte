@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { X, Download, Trash2, RefreshCw, Pause, Play, ChevronDown } from 'lucide-svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 	interface Props {
 		podName: string;
@@ -32,7 +33,7 @@
 	];
 
 	function buildLogUrl(): string {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		if (selectedContainer) params.set('container', selectedContainer);
 		params.set('follow', String(follow));
 		if (tailLines > 0) params.set('tailLines', String(tailLines));
@@ -327,4 +328,3 @@
 		font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 	}
 </style>
-

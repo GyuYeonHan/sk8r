@@ -36,9 +36,10 @@
 
 	function formatValue(value: number, unit?: string): string {
 		switch (unit) {
-			case 'percentage':
+			case 'percentage': {
 				return `${value.toFixed(1)}%`;
-			case 'bytes':
+			}
+			case 'bytes': {
 				// Convert to human-readable format
 				const units = ['B', 'KB', 'MB', 'GB', 'TB'];
 				let size = value;
@@ -48,8 +49,10 @@
 					unitIndex++;
 				}
 				return `${size.toFixed(2)} ${units[unitIndex]}`;
-			case 'cores':
+			}
+			case 'cores': {
 				return `${value.toFixed(2)} cores`;
+			}
 			default:
 				return value.toFixed(2);
 		}
