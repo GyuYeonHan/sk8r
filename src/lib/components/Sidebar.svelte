@@ -1,6 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ChevronRight, ChevronDown, Box, Database, Activity, GraduationCap, BookMarked, Sun, Moon, Server, RefreshCw, AlertCircle, Plus, Folder, Edit2, X, Trash2 } from 'lucide-svelte';
+	import {
+		ChevronRight,
+		ChevronDown,
+		Box,
+		Database,
+		Activity,
+		GraduationCap,
+		BookMarked,
+		Sun,
+		Moon,
+		Server,
+		RefreshCw,
+		AlertCircle,
+		Plus,
+		Folder,
+		Edit2,
+		X,
+		Trash2
+	} from 'lucide-svelte';
 	import { navigationConfig } from '$lib/config/navigationConfig';
 	import { getIcon } from '$lib/utils/iconMapping';
 	import { navigation } from '$lib/stores/navigation';
@@ -42,7 +60,7 @@
 
 	// Create reactive state for expanded sections - properly initialize each section
 	let sectionStates = $state(
-		navigationConfig.sections.map(section => ({
+		navigationConfig.sections.map((section) => ({
 			key: section.key,
 			expanded: section.collapsed === undefined ? false : !section.collapsed
 		}))
@@ -50,10 +68,10 @@
 
 	// Fetch cluster contexts and namespaces on mount
 	onMount(() => {
-		clusterStore.fetchContexts().catch(err => {
+		clusterStore.fetchContexts().catch((err) => {
 			console.warn('Failed to fetch cluster contexts:', err);
 		});
-		namespaceStore.fetchNamespaces().catch(err => {
+		namespaceStore.fetchNamespaces().catch((err) => {
 			console.warn('Failed to fetch namespaces:', err);
 		});
 	});
@@ -83,7 +101,7 @@
 	async function handleClusterChange(event: Event) {
 		const select = event.target as HTMLSelectElement;
 		const newContextOrId = select.value;
-		
+
 		if (newContextOrId && newContextOrId !== getCurrentClusterId()) {
 			clusterSwitching = true;
 			try {
@@ -138,10 +156,10 @@
 	async function deleteCluster(cluster: CustomCluster) {
 		if (!isAdmin) return;
 		const isCurrentCluster = $clusterStore.currentCustomClusterId === cluster.id;
-		const message = isCurrentCluster 
+		const message = isCurrentCluster
 			? `Are you sure you want to delete "${cluster.name}"? This is your current cluster and will require selecting another cluster.`
 			: `Are you sure you want to delete "${cluster.name}"?`;
-		
+
 		if (confirm(message)) {
 			try {
 				await clusterStore.removeCluster(cluster.id);
@@ -183,21 +201,21 @@
 		// If it's just hostname/IP, add https:// and default port
 		// Remove any trailing slashes
 		const cleanHost = trimmed.replace(/\/+$/, '');
-		
+
 		// Check if it contains a port already
 		const hasPort = /:\d+$/.test(cleanHost);
-		
+
 		if (hasPort) {
 			// Extract hostname and port
 			const lastColonIndex = cleanHost.lastIndexOf(':');
 			const host = cleanHost.substring(0, lastColonIndex);
 			const port = cleanHost.substring(lastColonIndex + 1);
-			
+
 			// Basic validation - just check it's not empty
 			if (!host || !port || isNaN(parseInt(port))) {
 				throw new Error('Invalid hostname/IP and port format');
 			}
-			
+
 			return `https://${host}:${port}`;
 		} else {
 			// Basic validation - check it's not empty and doesn't contain invalid characters
@@ -234,7 +252,12 @@
 
 		try {
 			if (editingCluster) {
-				await clusterStore.updateCluster(editingCluster.id, normalizedServer, clusterToken, clusterSkipTLS);
+				await clusterStore.updateCluster(
+					editingCluster.id,
+					normalizedServer,
+					clusterToken,
+					clusterSkipTLS
+				);
 			} else {
 				await clusterStore.addCluster(normalizedServer, clusterToken, clusterSkipTLS);
 			}
@@ -257,11 +280,23 @@
 		return $clusterStore.currentContext || '';
 	}
 
-	function getAllClusters(): Array<{ id: string; name: string; server: string; isCustom: boolean; isCurrent: boolean }> {
-		const clusters: Array<{ id: string; name: string; server: string; isCustom: boolean; isCurrent: boolean }> = [];
-		
+	function getAllClusters(): Array<{
+		id: string;
+		name: string;
+		server: string;
+		isCustom: boolean;
+		isCurrent: boolean;
+	}> {
+		const clusters: Array<{
+			id: string;
+			name: string;
+			server: string;
+			isCustom: boolean;
+			isCurrent: boolean;
+		}> = [];
+
 		// Add server-managed clusters
-		$clusterStore.customClusters.forEach(cluster => {
+		$clusterStore.customClusters.forEach((cluster) => {
 			clusters.push({
 				id: cluster.id,
 				name: cluster.name,
@@ -270,50 +305,51 @@
 				isCurrent: cluster.id === $clusterStore.currentCustomClusterId
 			});
 		});
-		
+
 		return clusters;
 	}
 </script>
 
-	<aside class="w-64 bg-gray-900 text-gray-100 h-full flex flex-col">
-		<div class="px-4 pt-4 pb-1 border-b border-gray-800">
-			<a href={resolve('/')} class="block" onclick={() => navigation.reset()}>
-				<h1 class="text-xl font-bold flex items-center gap-2">
-					<Box class="w-6 h-6" />
-					SK8R
+<aside class="flex h-full w-64 flex-col bg-gray-900 text-gray-100">
+	<div class="border-b border-gray-800 px-4 pt-4 pb-1">
+		<a href={resolve('/')} class="block" onclick={() => navigation.reset()}>
+			<h1 class="flex items-center gap-2 text-xl font-bold">
+				<Box class="h-6 w-6" />
+				SK8R
 			</h1>
-			<p class="text-sm text-gray-400 mt-1">Kubernetes Management</p>
+			<p class="mt-1 text-sm text-gray-400">Kubernetes Management</p>
 		</a>
 
 		{#if user}
 			<div class="mt-2 text-xs text-gray-400">
-				Signed in as <span class="text-gray-200 font-medium">{user.username}</span>
+				Signed in as <span class="font-medium text-gray-200">{user.username}</span>
 			</div>
 		{/if}
-		
+
 		<!-- Search hint -->
-		<div class="mt-3 text-xs text-gray-500 flex items-center gap-2">
-			<kbd class="px-2 py-1 bg-gray-800 border border-gray-600 rounded text-gray-400">Ctrl</kbd>
-			<kbd class="px-2 py-1 bg-gray-800 border border-gray-600 rounded text-gray-400">K</kbd>
+		<div class="mt-3 flex items-center gap-2 text-xs text-gray-500">
+			<kbd class="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-400">Ctrl</kbd>
+			<kbd class="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-400">K</kbd>
 			<span>to search</span>
 		</div>
 	</div>
 
-	<nav class="flex-1 overflow-y-auto px-2 flex flex-col">
-
+	<nav class="flex flex-1 flex-col overflow-y-auto px-2">
 		<!-- Create Resource Button (bottom-aligned) -->
-		<div class="pb-4 pt-2">
+		<div class="pt-2 pb-4">
 			{#if isAdmin}
 				<button
 					onclick={openResourceCreator}
-					class="w-full flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+					class="flex w-full items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-white transition-colors hover:bg-blue-700"
 					title="Create Resource (Ctrl+N)"
 				>
 					<Plus size={18} />
 					<span class="text-sm font-medium">Create Resource</span>
 				</button>
 			{:else}
-				<div class="w-full px-3 py-2 rounded-md bg-gray-800 border border-gray-700 text-xs text-gray-400">
+				<div
+					class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-400"
+				>
 					Read-only mode
 				</div>
 			{/if}
@@ -325,7 +361,7 @@
 			<div class="mb-1">
 				<button
 					onclick={() => toggleSection(section.key)}
-					class="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-800 transition-colors text-left"
+					class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-gray-800"
 				>
 					{#if section.items.length > 0}
 						{#if state?.expanded}
@@ -341,12 +377,12 @@
 				</button>
 
 				{#if state?.expanded && section.items.length > 0}
-					<div class="ml-6 mt-1">
+					<div class="mt-1 ml-6">
 						{#each section.items as item (item.label)}
 							{@const ItemIcon = getIcon(item.icon)}
 							<button
 								onclick={() => (item.resourceType ? selectResource(item.resourceType) : null)}
-								class="w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-800 transition-colors text-left text-sm"
+								class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors hover:bg-gray-800"
 								class:bg-gray-800={$navigation.selectedResource === item.resourceType}
 								title={item.description || ''}
 							>
@@ -359,10 +395,10 @@
 			</div>
 		{/each}
 		<!-- Design Patterns Section -->
-		<div class="mb-1 mt-4 pt-4 border-t border-gray-800">
+		<div class="mt-4 mb-1 border-t border-gray-800 pt-4">
 			<button
-				onclick={() => patternsExpanded = !patternsExpanded}
-				class="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-800 transition-colors text-left"
+				onclick={() => (patternsExpanded = !patternsExpanded)}
+				class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-gray-800"
 			>
 				{#if patternsExpanded}
 					<ChevronDown size={16} />
@@ -374,14 +410,14 @@
 			</button>
 
 			{#if patternsExpanded}
-				<div class="ml-6 mt-1">
-						{#each designPatterns as pattern (pattern.key)}
-							{@const PatternIcon = getIcon(pattern.icon)}
-							<a
-								href={resolve(`/patterns/${pattern.key}`)}
-								class="w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-800 transition-colors text-left text-sm block"
-								title={pattern.description}
-							>
+				<div class="mt-1 ml-6">
+					{#each designPatterns as pattern (pattern.key)}
+						{@const PatternIcon = getIcon(pattern.icon)}
+						<a
+							href={resolve(`/patterns/${pattern.key}`)}
+							class="block flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors hover:bg-gray-800"
+							title={pattern.description}
+						>
 							<PatternIcon size={14} class="text-amber-400" />
 							<span class="text-gray-300">{pattern.label}</span>
 						</a>
@@ -389,30 +425,34 @@
 				</div>
 			{/if}
 		</div>
-
 	</nav>
 
-	<div class="p-4 border-t border-gray-800">
+	<div class="border-t border-gray-800 p-4">
 		<!-- Cluster Selector -->
 		<div class="mb-3">
-			<div class="flex items-center justify-between mb-1">
-				<label for="cluster-select" class="text-xs text-gray-400 flex items-center gap-1.5">
+			<div class="mb-1 flex items-center justify-between">
+				<label for="cluster-select" class="flex items-center gap-1.5 text-xs text-gray-400">
 					<Server size={12} class="text-cyan-400" />
 					Cluster:
 				</label>
 				<div class="flex items-center gap-1">
 					<button
 						onclick={refreshClusters}
-						class="p-1 hover:bg-gray-700 rounded transition-colors"
+						class="rounded p-1 transition-colors hover:bg-gray-700"
 						title="Refresh cluster list"
 						disabled={$clusterStore.loading}
 					>
-						<RefreshCw size={12} class="text-gray-500 hover:text-gray-300 {$clusterStore.loading ? 'animate-spin' : ''}" />
+						<RefreshCw
+							size={12}
+							class="text-gray-500 hover:text-gray-300 {$clusterStore.loading
+								? 'animate-spin'
+								: ''}"
+						/>
 					</button>
 					{#if isAdmin}
 						<button
 							onclick={openAddClusterModal}
-							class="p-1 hover:bg-gray-700 rounded transition-colors"
+							class="rounded p-1 transition-colors hover:bg-gray-700"
 							title="Add cluster"
 						>
 							<Plus size={12} class="text-gray-500 hover:text-gray-300" />
@@ -420,23 +460,23 @@
 					{/if}
 				</div>
 			</div>
-			
+
 			{#if $clusterStore.error}
-				<div class="flex items-center gap-1.5 text-xs text-red-400 mb-1">
+				<div class="mb-1 flex items-center gap-1.5 text-xs text-red-400">
 					<AlertCircle size={12} />
 					<span class="truncate">{$clusterStore.error}</span>
 				</div>
 			{/if}
-			
+
 			{#if getAllClusters().length > 0}
 				{@const allClusters = getAllClusters()}
 				<div class="space-y-1">
-					<select 
+					<select
 						id="cluster-select"
 						value={getCurrentClusterId()}
 						onchange={handleClusterChange}
 						disabled={clusterSwitching || $clusterStore.loading}
-						class="w-full text-xs bg-gray-800 text-gray-300 border border-gray-600 rounded px-2 py-1.5 focus:outline-none focus:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-xs text-gray-300 focus:border-cyan-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{#each allClusters as cluster (cluster.id)}
 							<option value={cluster.id}>
@@ -445,27 +485,29 @@
 						{/each}
 					</select>
 					{#if clusterSwitching}
-						<div class="text-xs text-cyan-400 flex items-center gap-1">
+						<div class="flex items-center gap-1 text-xs text-cyan-400">
 							<RefreshCw size={10} class="animate-spin" />
 							Switching cluster...
 						</div>
 					{/if}
 					<!-- Edit/Delete buttons for custom clusters -->
 					{#if isAdmin && $clusterStore.customClusters.length > 0}
-						<div class="flex flex-wrap gap-1 mt-1">
+						<div class="mt-1 flex flex-wrap gap-1">
 							{#each $clusterStore.customClusters as customCluster (customCluster.id)}
-								<div class="flex items-center bg-gray-800 border border-gray-600 rounded overflow-hidden">
+								<div
+									class="flex items-center overflow-hidden rounded border border-gray-600 bg-gray-800"
+								>
 									<button
 										onclick={() => openEditClusterModal(customCluster)}
-										class="text-xs px-2 py-0.5 hover:bg-gray-700 flex items-center gap-1 transition-colors"
+										class="flex items-center gap-1 px-2 py-0.5 text-xs transition-colors hover:bg-gray-700"
 										title="Edit {customCluster.name}"
 									>
 										<Edit2 size={10} />
-										<span class="truncate max-w-[80px]">{customCluster.name}</span>
+										<span class="max-w-[80px] truncate">{customCluster.name}</span>
 									</button>
 									<button
 										onclick={() => deleteCluster(customCluster)}
-										class="text-xs px-1.5 py-0.5 hover:bg-red-900/50 text-gray-400 hover:text-red-400 border-l border-gray-600 transition-colors"
+										class="border-l border-gray-600 px-1.5 py-0.5 text-xs text-gray-400 transition-colors hover:bg-red-900/50 hover:text-red-400"
 										title="Delete {customCluster.name}"
 									>
 										<Trash2 size={10} />
@@ -476,18 +518,16 @@
 					{/if}
 				</div>
 			{:else if $clusterStore.loading}
-				<div class="text-xs text-gray-500 flex items-center gap-1.5 py-1">
+				<div class="flex items-center gap-1.5 py-1 text-xs text-gray-500">
 					<RefreshCw size={12} class="animate-spin" />
 					Loading clusters...
 				</div>
 			{:else}
-				<div class="text-xs text-gray-500 py-1 mb-1">
-					No clusters found
-				</div>
+				<div class="mb-1 py-1 text-xs text-gray-500">No clusters found</div>
 				{#if isAdmin}
 					<button
 						onclick={openAddClusterModal}
-						class="w-full text-xs px-2 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded transition-colors flex items-center justify-center gap-1"
+						class="flex w-full items-center justify-center gap-1 rounded bg-cyan-600 px-2 py-1.5 text-xs text-white transition-colors hover:bg-cyan-700"
 					>
 						<Plus size={12} />
 						Add Cluster
@@ -495,38 +535,43 @@
 				{/if}
 			{/if}
 		</div>
-		
+
 		<!-- Namespace Selector -->
 		<div class="mb-2">
-			<div class="flex items-center justify-between mb-1">
-				<label for="namespace-select" class="text-xs text-gray-400 flex items-center gap-1.5">
+			<div class="mb-1 flex items-center justify-between">
+				<label for="namespace-select" class="flex items-center gap-1.5 text-xs text-gray-400">
 					<Folder size={12} class="text-purple-400" />
 					Namespace:
 				</label>
 				<button
 					onclick={refreshNamespaces}
-					class="p-1 hover:bg-gray-700 rounded transition-colors"
+					class="rounded p-1 transition-colors hover:bg-gray-700"
 					title="Refresh namespace list"
 					disabled={$namespaceStore.loading}
 				>
-					<RefreshCw size={12} class="text-gray-500 hover:text-gray-300 {$namespaceStore.loading ? 'animate-spin' : ''}" />
+					<RefreshCw
+						size={12}
+						class="text-gray-500 hover:text-gray-300 {$namespaceStore.loading
+							? 'animate-spin'
+							: ''}"
+					/>
 				</button>
 			</div>
-			
+
 			{#if $namespaceStore.error}
-				<div class="flex items-center gap-1.5 text-xs text-red-400 mb-1">
+				<div class="mb-1 flex items-center gap-1.5 text-xs text-red-400">
 					<AlertCircle size={12} />
 					<span class="truncate">{$namespaceStore.error}</span>
 				</div>
 			{/if}
-			
+
 			{#if $namespaceStore.namespaces.length > 0}
-				<select 
+				<select
 					id="namespace-select"
 					value={$navigation.namespace}
 					onchange={(e) => navigation.setNamespace((e.target as HTMLSelectElement).value)}
 					disabled={$namespaceStore.loading}
-					class="w-full text-xs bg-gray-800 text-gray-300 border border-gray-600 rounded px-2 py-1.5 focus:outline-none focus:border-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+					class="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-xs text-gray-300 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					<option value="*">* All Namespaces</option>
 					{#each $namespaceStore.namespaces as ns (ns)}
@@ -534,16 +579,16 @@
 					{/each}
 				</select>
 			{:else if $namespaceStore.loading}
-				<div class="text-xs text-gray-500 flex items-center gap-1.5 py-1">
+				<div class="flex items-center gap-1.5 py-1 text-xs text-gray-500">
 					<RefreshCw size={12} class="animate-spin" />
 					Loading namespaces...
 				</div>
 			{:else}
-				<select 
+				<select
 					id="namespace-select"
 					value={$navigation.namespace}
 					onchange={(e) => navigation.setNamespace((e.target as HTMLSelectElement).value)}
-					class="w-full text-xs bg-gray-800 text-gray-300 border border-gray-600 rounded px-2 py-1.5 focus:outline-none focus:border-purple-500"
+					class="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-xs text-gray-300 focus:border-purple-500 focus:outline-none"
 				>
 					<option value="*">* All Namespaces</option>
 					<option value="default">default</option>
@@ -552,10 +597,14 @@
 		</div>
 
 		<!-- Data Source Status -->
-		<div class="mt-3 pt-3 border-t border-gray-700">
-			<div class="text-xs text-gray-400 mb-2">Data Source:</div>
+		<div class="mt-3 border-t border-gray-700 pt-3">
+			<div class="mb-2 text-xs text-gray-400">Data Source:</div>
 			<div class="flex items-center gap-2">
-				<div class="w-2 h-2 rounded-full animate-pulse {$dataSource.connected ? 'bg-green-400' : 'bg-red-400'}"></div>
+				<div
+					class="h-2 w-2 animate-pulse rounded-full {$dataSource.connected
+						? 'bg-green-400'
+						: 'bg-red-400'}"
+				></div>
 				{#if $dataSource.source === 'prometheus'}
 					<Activity size={14} class="text-purple-400" />
 					<span class="text-xs text-gray-300">Prometheus</span>
@@ -567,27 +616,41 @@
 		</div>
 
 		<!-- Learning Mode Toggle -->
-		<div class="mt-3 pt-3 border-t border-gray-700">
+		<div class="mt-3 border-t border-gray-700 pt-3">
 			<button
 				onclick={() => learningMode.toggle()}
-				class="w-full flex items-center gap-2 px-2 py-2 rounded-md transition-colors text-left {$learningMode ? 'bg-amber-900/40 hover:bg-amber-900/60 border border-amber-700/50' : 'hover:bg-gray-800 border border-transparent'}"
+				class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors {$learningMode
+					? 'border border-amber-700/50 bg-amber-900/40 hover:bg-amber-900/60'
+					: 'border border-transparent hover:bg-gray-800'}"
 				title="Toggle learning mode to show explanations for Kubernetes resources"
 			>
 				<GraduationCap size={16} class={$learningMode ? 'text-amber-400' : 'text-gray-400'} />
-				<span class="text-xs {$learningMode ? 'text-amber-300' : 'text-gray-400'}">Learning Mode</span>
+				<span class="text-xs {$learningMode ? 'text-amber-300' : 'text-gray-400'}"
+					>Learning Mode</span
+				>
 				<div class="ml-auto">
-					<div class="w-8 h-4 rounded-full transition-colors {$learningMode ? 'bg-amber-500' : 'bg-gray-600'}">
-						<div class="w-3 h-3 rounded-full bg-white shadow-sm transform transition-transform mt-0.5 {$learningMode ? 'translate-x-4.5 ml-0.5' : 'translate-x-0.5'}"></div>
+					<div
+						class="h-4 w-8 rounded-full transition-colors {$learningMode
+							? 'bg-amber-500'
+							: 'bg-gray-600'}"
+					>
+						<div
+							class="mt-0.5 h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform {$learningMode
+								? 'ml-0.5 translate-x-4.5'
+								: 'translate-x-0.5'}"
+						></div>
 					</div>
 				</div>
 			</button>
 		</div>
 
 		<!-- Dark Mode Toggle -->
-		<div class="mt-3 pt-3 border-t border-gray-700">
+		<div class="mt-3 border-t border-gray-700 pt-3">
 			<button
 				onclick={() => darkMode.toggle()}
-				class="w-full flex items-center gap-2 px-2 py-2 rounded-md transition-colors text-left {$darkMode ? 'bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-700/50' : 'hover:bg-gray-800 border border-transparent'}"
+				class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors {$darkMode
+					? 'border border-indigo-700/50 bg-indigo-900/40 hover:bg-indigo-900/60'
+					: 'border border-transparent hover:bg-gray-800'}"
 				title="Toggle dark mode"
 			>
 				{#if $darkMode}
@@ -597,15 +660,23 @@
 				{/if}
 				<span class="text-xs {$darkMode ? 'text-indigo-300' : 'text-gray-400'}">Dark Mode</span>
 				<div class="ml-auto">
-					<div class="w-8 h-4 rounded-full transition-colors {$darkMode ? 'bg-indigo-500' : 'bg-gray-600'}">
-						<div class="w-3 h-3 rounded-full bg-white shadow-sm transform transition-transform mt-0.5 {$darkMode ? 'translate-x-4.5 ml-0.5' : 'translate-x-0.5'}"></div>
+					<div
+						class="h-4 w-8 rounded-full transition-colors {$darkMode
+							? 'bg-indigo-500'
+							: 'bg-gray-600'}"
+					>
+						<div
+							class="mt-0.5 h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform {$darkMode
+								? 'ml-0.5 translate-x-4.5'
+								: 'translate-x-0.5'}"
+						></div>
 					</div>
 				</div>
 			</button>
 		</div>
 
 		<!-- Version -->
-		<div class="mt-3 pt-3 border-t border-gray-700 text-center">
+		<div class="mt-3 border-t border-gray-700 pt-3 text-center">
 			<span class="text-xs text-gray-500">v{__APP_VERSION__}</span>
 		</div>
 	</div>
@@ -613,40 +684,48 @@
 
 <!-- Cluster Management Modal -->
 {#if showClusterModal}
-	<div 
-		class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" 
-		role="dialog" 
-		aria-modal="true" 
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+		role="dialog"
+		aria-modal="true"
 		tabindex="-1"
 		onclick={(e) => e.target === e.currentTarget && closeClusterModal()}
 		onkeydown={(e) => e.key === 'Escape' && closeClusterModal()}
 	>
-		<div 
-			class="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 w-full max-w-md mx-4 border border-gray-600"
+		<div
+			class="mx-4 w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-6 text-gray-100 shadow-xl"
 		>
-			<div class="flex items-center justify-between mb-4">
+			<div class="mb-4 flex items-center justify-between">
 				<h2 class="text-lg font-semibold">
 					{editingCluster ? 'Edit Cluster' : 'Add Cluster'}
 				</h2>
 				<button
 					onclick={closeClusterModal}
-					class="p-1 hover:bg-gray-700 rounded transition-colors"
+					class="rounded p-1 transition-colors hover:bg-gray-700"
 					title="Close"
 				>
 					<X size={18} />
 				</button>
 			</div>
-			
+
 			{#if clusterModalError}
-				<div class="mb-4 p-2 bg-red-900/30 border border-red-700 rounded text-xs text-red-300 flex items-center gap-2">
+				<div
+					class="mb-4 flex items-center gap-2 rounded border border-red-700 bg-red-900/30 p-2 text-xs text-red-300"
+				>
 					<AlertCircle size={14} />
 					<span>{clusterModalError}</span>
 				</div>
 			{/if}
-			
-			<form onsubmit={(e) => { e.preventDefault(); saveCluster(); }} class="space-y-4">
+
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					saveCluster();
+				}}
+				class="space-y-4"
+			>
 				<div>
-					<label for="cluster-server" class="block text-xs text-gray-400 mb-1">
+					<label for="cluster-server" class="mb-1 block text-xs text-gray-400">
 						Server Address:
 					</label>
 					<input
@@ -655,16 +734,16 @@
 						bind:value={clusterServer}
 						placeholder="kubernetes.example.com or https://kubernetes.example.com:6443"
 						disabled={clusterModalLoading}
-						class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-gray-100 focus:outline-none focus:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-gray-100 focus:border-cyan-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 						required
 					/>
-					<p class="text-xs text-gray-500 mt-1">
+					<p class="mt-1 text-xs text-gray-500">
 						Enter hostname/IP (defaults to port 6443) or paste full URL from kubeconfig
 					</p>
 				</div>
-				
+
 				<div>
-					<label for="cluster-token" class="block text-xs text-gray-400 mb-1">
+					<label for="cluster-token" class="mb-1 block text-xs text-gray-400">
 						Bearer Token:
 					</label>
 					<input
@@ -673,29 +752,29 @@
 						bind:value={clusterToken}
 						placeholder="Enter your Kubernetes bearer token"
 						disabled={clusterModalLoading}
-						class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-gray-100 focus:outline-none focus:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-gray-100 focus:border-cyan-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 						required
 					/>
 				</div>
-				
+
 				<div class="flex items-center gap-2">
 					<input
 						id="cluster-skip-tls"
 						type="checkbox"
 						bind:checked={clusterSkipTLS}
 						disabled={clusterModalLoading}
-						class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
 					/>
 					<label for="cluster-skip-tls" class="text-xs text-gray-400">
 						Skip TLS certificate verification
 					</label>
 				</div>
-				
+
 				<div class="flex items-center gap-2 pt-2">
 					<button
 						type="submit"
 						disabled={clusterModalLoading}
-						class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+						class="flex flex-1 items-center justify-center gap-2 rounded bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{#if clusterModalLoading}
 							<RefreshCw size={14} class="animate-spin" />
@@ -708,7 +787,7 @@
 						type="button"
 						onclick={closeClusterModal}
 						disabled={clusterModalLoading}
-						class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+						class="rounded bg-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						Cancel
 					</button>

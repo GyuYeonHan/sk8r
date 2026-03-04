@@ -29,10 +29,7 @@
 	onMount(async () => {
 		try {
 			// Dynamically import shiki and js-yaml to avoid SSR issues
-			const [shikiModule, yaml] = await Promise.all([
-				import('shiki'),
-				import('js-yaml')
-			]);
+			const [shikiModule, yaml] = await Promise.all([import('shiki'), import('js-yaml')]);
 			yamlModule = yaml;
 			highlighter = await shikiModule.createHighlighter({
 				themes: ['github-dark'],
@@ -59,7 +56,7 @@
 				lang: 'yaml',
 				theme: 'github-dark'
 			});
-			
+
 			// Validate YAML
 			validateYaml(value);
 		} catch (err) {
@@ -100,7 +97,7 @@
 	function handleInput(e: Event) {
 		const target = e.target as HTMLTextAreaElement;
 		const newValue = target.value;
-		
+
 		if (onChange) {
 			onChange(newValue);
 		}
@@ -121,13 +118,13 @@
 			const target = e.target as HTMLTextAreaElement;
 			const start = target.selectionStart;
 			const end = target.selectionEnd;
-			
+
 			const newValue = value.substring(0, start) + '  ' + value.substring(end);
-			
+
 			if (onChange) {
 				onChange(newValue);
 			}
-			
+
 			// Restore cursor position
 			requestAnimationFrame(() => {
 				target.selectionStart = target.selectionEnd = start + 2;
@@ -160,11 +157,14 @@
 	}
 </script>
 
-<div class="yaml-editor rounded-lg overflow-hidden border border-gray-700 bg-gray-900" style="height: {height}">
+<div
+	class="yaml-editor overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
+	style="height: {height}"
+>
 	<!-- Toolbar -->
-	<div class="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700">
+	<div class="flex items-center justify-between border-b border-gray-700 bg-gray-800 px-3 py-2">
 		<div class="flex items-center gap-2">
-			<span class="text-xs text-gray-400 font-mono">YAML</span>
+			<span class="font-mono text-xs text-gray-400">YAML</span>
 			{#if error}
 				<div class="flex items-center gap-1 text-xs text-red-400">
 					<AlertCircle size={12} />
@@ -177,10 +177,10 @@
 				</div>
 			{/if}
 		</div>
-		
+
 		<button
 			onclick={copyToClipboard}
-			class="p-1.5 rounded hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-200"
+			class="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
 			title="Copy to clipboard"
 		>
 			{#if copied}
@@ -194,10 +194,14 @@
 	<!-- Editor area -->
 	<div class="editor-container relative flex" style="height: calc(100% - 40px)">
 		<!-- Line numbers -->
-		<div class="line-numbers flex-shrink-0 bg-gray-900 text-gray-600 text-right pr-3 pl-3 py-3 select-none overflow-hidden border-r border-gray-800">
+		<div
+			class="line-numbers flex-shrink-0 overflow-hidden border-r border-gray-800 bg-gray-900 py-3 pr-3 pl-3 text-right text-gray-600 select-none"
+		>
 			{#each lineNumbers as num}
-				<div 
-					class="leading-6 text-xs font-mono {error?.line === num ? 'text-red-400 bg-red-900/30' : ''}"
+				<div
+					class="font-mono text-xs leading-6 {error?.line === num
+						? 'bg-red-900/30 text-red-400'
+						: ''}"
 				>
 					{num}
 				</div>
@@ -205,18 +209,17 @@
 		</div>
 
 		<!-- Code area with overlay -->
-		<div class="code-area flex-1 relative overflow-hidden">
+		<div class="code-area relative flex-1 overflow-hidden">
 			<!-- Syntax highlighted background -->
-				<pre
-					bind:this={preRef}
-					class="highlighted-code absolute inset-0 m-0 p-3 overflow-auto pointer-events-none"
-				>
+			<pre
+				bind:this={preRef}
+				class="highlighted-code pointer-events-none absolute inset-0 m-0 overflow-auto p-3">
 					{#if sanitizedHighlightedHtml}
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 						{@html sanitizedHighlightedHtml}
-					{:else}
-						<code class="text-gray-300">{value}</code>
-					{/if}
+				{:else}
+					<code class="text-gray-300">{value}</code>
+				{/if}
 				</pre>
 
 			<!-- Transparent textarea for editing -->
@@ -227,7 +230,7 @@
 					oninput={handleInput}
 					onscroll={handleScroll}
 					onkeydown={handleKeyDown}
-					class="absolute inset-0 w-full h-full p-3 bg-transparent text-transparent caret-white resize-none outline-none font-mono text-sm leading-6"
+					class="absolute inset-0 h-full w-full resize-none bg-transparent p-3 font-mono text-sm leading-6 text-transparent caret-white outline-none"
 					spellcheck="false"
 					autocomplete="off"
 				></textarea>
@@ -238,7 +241,9 @@
 
 <style>
 	.yaml-editor {
-		font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+		font-family:
+			ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono',
+			'Courier New', monospace;
 	}
 
 	.line-numbers {

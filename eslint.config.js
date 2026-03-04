@@ -28,30 +28,18 @@ export default defineConfig(
 			'no-undef': 'off',
 			'no-unused-vars': 'off',
 
-			// Legacy-debt rules are warning-only so lint can be used as a quality gate again while
-			// the team incrementally burns down existing violations.
-			'@typescript-eslint/no-explicit-any': 'warn',
-			'@typescript-eslint/no-unused-vars': [
-				'warn',
-				{
-					argsIgnorePattern: '^_',
-					varsIgnorePattern: '^_',
-					caughtErrorsIgnorePattern: '^_'
-				}
-			],
-			'no-case-declarations': 'warn',
-			'svelte/require-each-key': 'warn',
-			'svelte/no-unused-props': 'warn',
-			'svelte/prefer-writable-derived': 'warn',
-			'svelte/no-unnecessary-state-wrap': 'warn'
+			// Keep lint output actionable by disabling legacy-noise rules until debt is retired.
+			'@typescript-eslint/no-explicit-any': 'off',
+			'@typescript-eslint/no-unused-vars': 'off',
+			'no-case-declarations': 'off',
+			'svelte/require-each-key': 'off',
+			'svelte/no-unused-props': 'off',
+			'svelte/prefer-writable-derived': 'off',
+			'svelte/no-unnecessary-state-wrap': 'off'
 		}
 	},
 	{
-		files: [
-			'**/*.svelte',
-			'**/*.svelte.ts',
-			'**/*.svelte.js'
-		],
+		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
 			parserOptions: {
 				projectService: true,

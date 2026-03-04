@@ -12,6 +12,7 @@ spec:
       labels:
         app: sk8tes
     spec:
+      serviceAccountName: sk8tes-sa
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

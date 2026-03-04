@@ -78,9 +78,7 @@
 						await clusterStore.switchToCustomCluster(newCluster.id);
 					} catch (err) {
 						console.error('Failed to add cluster:', err);
-						alert(
-							`Failed to add cluster: ${err instanceof Error ? err.message : 'Unknown error'}`
-						);
+						alert(`Failed to add cluster: ${err instanceof Error ? err.message : 'Unknown error'}`);
 					}
 				}
 			};
@@ -102,21 +100,27 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="flex h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
+<div class="flex h-screen bg-gray-50 transition-colors duration-200 dark:bg-slate-900">
 	<Sidebar isAdmin={data.isAdmin} user={data.user} />
 	<main class="flex-1 overflow-auto dark:text-slate-100">
-		<div class="flex items-center justify-end px-6 py-3 border-b border-gray-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+		<div
+			class="flex items-center justify-end border-b border-gray-200 bg-white/80 px-6 py-3 backdrop-blur dark:border-slate-700 dark:bg-slate-800/80"
+		>
 			<div class="flex items-center gap-3">
 				<div class="text-sm text-gray-700 dark:text-slate-300">
 					<span class="font-medium">{data.user?.name || data.user?.username}</span>
-					<span class="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {data.isAdmin ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'}">
+					<span
+						class="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {data.isAdmin
+							? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+							: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'}"
+					>
 						{data.isAdmin ? 'Admin' : 'User'}
 					</span>
 				</div>
 				<form method="POST" action="/auth/logout">
 					<button
 						type="submit"
-						class="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-900 text-white hover:bg-gray-700 dark:bg-slate-600 dark:hover:bg-slate-500 transition-colors"
+						class="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 dark:bg-slate-600 dark:hover:bg-slate-500"
 					>
 						Logout
 					</button>
@@ -127,7 +131,7 @@
 			{@render children()}
 		</div>
 	</main>
-	
+
 	<!-- Global Search -->
 	<GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
 </div>

@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { Log } from '@kubernetes/client-node';
+import { CoreV1Api, Log } from '@kubernetes/client-node';
 import { Writable } from 'stream';
 import { createKubeConfig, credentialErrorResponse } from '$lib/server/k8sAuth';
 import { resolveK8sCredentials } from '$lib/server/clusterContext';
@@ -21,6 +21,7 @@ export const GET: RequestHandler = async (event) => {
 
 	// Load kubeconfig from credentials
 	const kc = createKubeConfig(credentials.server, credentials.token, credentials.skipTLSVerify);
+	const coreApi = kc.makeApiClient(CoreV1Api);
 	const log = new Log(kc);
 	let logAbortController: AbortController | null = null;
 	let logStreamRef: Writable | null = null;
@@ -84,11 +85,11 @@ export const GET: RequestHandler = async (event) => {
 					write(chunk: Buffer, _encoding, callback) {
 						const text = chunk.toString('utf8');
 						buffer += text;
-						
+
 						// Split by newlines and send complete lines
 						const lines = buffer.split('\n');
 						buffer = lines.pop() || ''; // Keep incomplete line in buffer
-						
+
 						for (const line of lines) {
 							if (line.trim()) {
 								sendEvent(line, 'log');
@@ -114,20 +115,22 @@ export const GET: RequestHandler = async (event) => {
 				});
 
 				// Start streaming logs
-				// Container is required, use first container if not specified
-				const containerName = container || 'main';
-				logAbortController = await log.log(
-					namespace,
-					name,
-					containerName,
-					logStream,
-					{
-						follow,
-						tailLines,
-						timestamps,
-						previous
+				let containerName = container;
+				if (!containerName) {
+					const pod = await coreApi.readNamespacedPod({ name, namespace });
+					const firstContainer = pod.spec?.containers?.[0]?.name;
+					if (!firstContainer) {
+						throw new Error('No container found in pod');
 					}
-				);
+					containerName = firstContainer;
+				}
+
+				logAbortController = await log.log(namespace, name, containerName, logStream, {
+					follow,
+					tailLines,
+					timestamps,
+					previous
+				});
 
 				// If not following, the stream will end naturally
 				if (!follow) {
@@ -158,7 +161,7 @@ export const GET: RequestHandler = async (event) => {
 		headers: {
 			'Content-Type': 'text/event-stream',
 			'Cache-Control': 'no-cache',
-			'Connection': 'keep-alive',
+			Connection: 'keep-alive',
 			'X-Accel-Buffering': 'no' // Disable nginx buffering
 		}
 	});

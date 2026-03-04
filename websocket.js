@@ -5,6 +5,18 @@ import { PrismaClient } from '@prisma/client';
 import crypto from 'node:crypto';
 import * as stream from 'stream';
 
+/**
+ * @typedef {import('http').IncomingMessage} IncomingMessage
+ * @typedef {import('net').Socket} NetSocket
+ * @typedef {import('ws').WebSocket} WsSocket
+ * @typedef {import('ws').WebSocketServer} WsServer
+ * @typedef {{ server: string; token: string; skipTLSVerify: boolean }} K8sCredentials
+ * @typedef {'NO_CLUSTER_SELECTED' | 'CLUSTER_NOT_FOUND' | 'DECRYPT_FAILED'} CredentialError
+ * @typedef {{ expiresAt: number; permissions?: string[] }} AuthSession
+ * @typedef {{ stdin: stream.PassThrough | null; close: () => void }} K8sConnection
+ * @typedef {{ ws: WsSocket; cleanup: () => void }} ActiveConnectionEntry
+ */
+
 const KEY_BYTES = 32;
 const CLUSTER_COOKIE_NAME = 'k8s_cluster_id';
 const AUTH_SESSION_COOKIE_NAME = 'sk8r_auth_session';
@@ -14,11 +26,15 @@ const prisma = new PrismaClient({
 });
 
 // Store active connections for cleanup
+/** @type {Map<string, ActiveConnectionEntry>} */
 const activeConnections = new Map();
 
+/** @type {Buffer | null} */
 let cachedKey = null;
+/** @type {Buffer | null} */
 let cachedSessionKey = null;
 
+/** @returns {Buffer} */
 function readEncryptionKey() {
 	if (cachedKey) {
 		return cachedKey;
@@ -40,6 +56,12 @@ function readEncryptionKey() {
 	return key;
 }
 
+/**
+ * @param {string} ciphertext
+ * @param {string} iv
+ * @param {string} tag
+ * @returns {string}
+ */
 function decryptText(ciphertext, iv, tag) {
 	const key = readEncryptionKey();
 	const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64'));
@@ -53,6 +75,7 @@ function decryptText(ciphertext, iv, tag) {
 	return decrypted.toString('utf8');
 }
 
+/** @returns {Buffer} */
 function readSessionKey() {
 	if (cachedSessionKey) {
 		return cachedSessionKey;
@@ -72,11 +95,15 @@ function readSessionKey() {
 	return key;
 }
 
+/**
+ * @param {string} cookieValue
+ * @returns {AuthSession | null}
+ */
 function decryptAuthSession(cookieValue) {
 	try {
 		const key = readSessionKey();
-		const serializedPayload = Buffer.from(cookieValue, 'base64url').toString('utf8');
-		const payload = JSON.parse(serializedPayload);
+		/** @type {{ iv?: string; tag?: string; ciphertext?: string }} */
+		const payload = JSON.parse(Buffer.from(cookieValue, 'base64url').toString('utf8'));
 		if (!payload.iv || !payload.tag || !payload.ciphertext) {
 			return null;
 		}
@@ -87,6 +114,7 @@ function decryptAuthSession(cookieValue) {
 			decipher.update(Buffer.from(payload.ciphertext, 'base64')),
 			decipher.final()
 		]);
+		/** @type {AuthSession} */
 		const session = JSON.parse(decrypted.toString('utf8'));
 		const now = Math.floor(Date.now() / 1000);
 		if (!session || typeof session !== 'object' || session.expiresAt <= now) {
@@ -99,6 +127,10 @@ function decryptAuthSession(cookieValue) {
 	}
 }
 
+/**
+ * @param {string | undefined} cookieHeader
+ * @returns {string | null}
+ */
 function getClusterIdFromCookieHeader(cookieHeader) {
 	if (!cookieHeader) return null;
 
@@ -113,6 +145,11 @@ function getClusterIdFromCookieHeader(cookieHeader) {
 	return null;
 }
 
+/**
+ * @param {string | undefined} cookieHeader
+ * @param {string} name
+ * @returns {string | null}
+ */
 function getCookieValue(cookieHeader, name) {
 	if (!cookieHeader) return null;
 
@@ -126,6 +163,12 @@ function getCookieValue(cookieHeader, name) {
 	return null;
 }
 
+/**
+ * @param {string} server
+ * @param {string} token
+ * @param {boolean} [skipTLSVerify]
+ * @returns {KubeConfig}
+ */
 function createKubeConfig(server, token, skipTLSVerify = true) {
 	const kc = new KubeConfig();
 	kc.loadFromOptions({
@@ -137,6 +180,10 @@ function createKubeConfig(server, token, skipTLSVerify = true) {
 	return kc;
 }
 
+/**
+ * @param {IncomingMessage} request
+ * @returns {Promise<{ credentials: K8sCredentials } | { error: CredentialError }>}
+ */
 async function resolveK8sCredentials(request) {
 	const cookieHeader = Array.isArray(request.headers.cookie)
 		? request.headers.cookie.join('; ')
@@ -157,7 +204,7 @@ async function resolveK8sCredentials(request) {
 			credentials: {
 				server: decryptText(cluster.serverEncrypted, cluster.serverIv, cluster.serverTag),
 				token: decryptText(cluster.tokenEncrypted, cluster.tokenIv, cluster.tokenTag),
-				skipTLSVerify: cluster.skipTLSVerify
+				skipTLSVerify: cluster.skipTLSVerify ?? true
 			}
 		};
 	} catch (error) {
@@ -166,6 +213,10 @@ async function resolveK8sCredentials(request) {
 	}
 }
 
+/**
+ * @param {CredentialError} error
+ * @returns {string}
+ */
 function credentialResolveErrorMessage(error) {
 	switch (error) {
 		case 'NO_CLUSTER_SELECTED':
@@ -179,6 +230,7 @@ function credentialResolveErrorMessage(error) {
 	}
 }
 
+/** @returns {WsServer} */
 export function createWebSocketServer() {
 	const wss = new WebSocketServer({ noServer: true });
 
@@ -189,6 +241,11 @@ export function createWebSocketServer() {
 	return wss;
 }
 
+/**
+ * @param {WsSocket} ws
+ * @param {IncomingMessage} request
+ * @returns {Promise<void>}
+ */
 async function handleConnection(ws, request) {
 	try {
 		const url = new URL(request.url || '', `http://${request.headers.host}`);
@@ -236,6 +293,12 @@ async function handleConnection(ws, request) {
 	}
 }
 
+/**
+ * @param {WsServer} wss
+ * @param {IncomingMessage} request
+ * @param {NetSocket} socket
+ * @param {Buffer} head
+ */
 export function handleUpgrade(wss, request, socket, head) {
 	const url = new URL(request.url || '', `http://${request.headers.host}`);
 
@@ -250,6 +313,15 @@ export function handleUpgrade(wss, request, socket, head) {
 	});
 }
 
+/**
+ * @param {WsSocket} ws
+ * @param {string} namespace
+ * @param {string} podName
+ * @param {string | undefined} container
+ * @param {string} command
+ * @param {K8sCredentials} credentials
+ * @returns {Promise<void>}
+ */
 async function handleExecConnection(ws, namespace, podName, container, command, credentials) {
 	const connectionId = `${namespace}/${podName}/${container || 'default'}/${Date.now()}`;
 
@@ -259,6 +331,7 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 	const exec = new Exec(kc);
 
 	// Track K8s connection for cleanup
+	/** @type {K8sConnection} */
 	let k8sConnection = {
 		stdin: null,
 		close: () => {}
@@ -272,6 +345,10 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 
 	activeConnections.set(connectionId, { ws, cleanup });
 
+	/**
+	 * @param {string | Buffer} data
+	 * @returns {void}
+	 */
 	const sendToClient = (data) => {
 		if (ws.readyState === WebSocket.OPEN) {
 			try {
@@ -388,7 +465,7 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 								}
 							};
 
-							resolve();
+							resolve(undefined);
 						})
 						.catch(reject);
 				});
@@ -398,7 +475,8 @@ async function handleExecConnection(ws, namespace, podName, container, command, 
 				break;
 			} catch (err) {
 				lastError = err;
-				console.log(`[WebSocket] Shell ${shell} failed:`, err.message);
+				const shellError = err instanceof Error ? err.message : String(err);
+				console.log(`[WebSocket] Shell ${shell} failed:`, shellError);
 			}
 		}
 

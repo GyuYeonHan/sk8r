@@ -26,7 +26,7 @@ export const GET: RequestHandler = async (event) => {
 	if (involvedObjectKind && involvedObjectName) {
 		const kindFilter = `involvedObject.kind=${involvedObjectKind}`;
 		const nameFilter = `involvedObject.name=${involvedObjectName}`;
-		effectiveFieldSelector = effectiveFieldSelector 
+		effectiveFieldSelector = effectiveFieldSelector
 			? `${effectiveFieldSelector},${kindFilter},${nameFilter}`
 			: `${kindFilter},${nameFilter}`;
 	}
@@ -85,15 +85,24 @@ export const GET: RequestHandler = async (event) => {
 				// First, fetch existing events to show recent history
 				try {
 					const existingEvents = namespace
-						? await coreApi.listNamespacedEvent({ namespace, fieldSelector: effectiveFieldSelector || undefined })
-						: await coreApi.listEventForAllNamespaces({ fieldSelector: effectiveFieldSelector || undefined });
+						? await coreApi.listNamespacedEvent({
+								namespace,
+								fieldSelector: effectiveFieldSelector || undefined
+							})
+						: await coreApi.listEventForAllNamespaces({
+								fieldSelector: effectiveFieldSelector || undefined
+							});
 
 					// Send existing events (last 50)
 					const events = (existingEvents as any).items || [];
 					const recentEvents = events
 						.sort((a: any, b: any) => {
-							const aTime = new Date(a.lastTimestamp || a.metadata?.creationTimestamp || 0).getTime();
-							const bTime = new Date(b.lastTimestamp || b.metadata?.creationTimestamp || 0).getTime();
+							const aTime = new Date(
+								a.lastTimestamp || a.metadata?.creationTimestamp || 0
+							).getTime();
+							const bTime = new Date(
+								b.lastTimestamp || b.metadata?.creationTimestamp || 0
+							).getTime();
 							return bTime - aTime;
 						})
 						.slice(0, 50)
@@ -107,9 +116,7 @@ export const GET: RequestHandler = async (event) => {
 				}
 
 				// Build watch path
-				const watchPath = namespace 
-					? `/api/v1/namespaces/${namespace}/events`
-					: '/api/v1/events';
+				const watchPath = namespace ? `/api/v1/namespaces/${namespace}/events` : '/api/v1/events';
 
 				const queryParams: Record<string, string> = { watch: 'true' };
 				if (effectiveFieldSelector) {
@@ -149,7 +156,7 @@ export const GET: RequestHandler = async (event) => {
 		headers: {
 			'Content-Type': 'text/event-stream',
 			'Cache-Control': 'no-cache',
-			'Connection': 'keep-alive',
+			Connection: 'keep-alive',
 			'X-Accel-Buffering': 'no'
 		}
 	});

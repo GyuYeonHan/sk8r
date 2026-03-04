@@ -30,7 +30,7 @@
 		return {
 			text: isDarkMode ? 'rgb(226, 232, 240)' : 'rgb(107, 114, 128)', // slate-200 / gray-500
 			gridLines: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-			tickColor: isDarkMode ? 'rgb(148, 163, 184)' : 'rgb(107, 114, 128)', // slate-400 / gray-500
+			tickColor: isDarkMode ? 'rgb(148, 163, 184)' : 'rgb(107, 114, 128)' // slate-400 / gray-500
 		};
 	}
 
@@ -108,12 +108,12 @@
 			const shouldFill = config.fill === true || config.type === 'area';
 			return {
 				label: series.label,
-				data: series.data.map(point => ({
+				data: series.data.map((point) => ({
 					x: point.timestamp,
 					y: point.value
 				})),
 				borderColor: seriesColor,
-				backgroundColor: shouldFill 
+				backgroundColor: shouldFill
 					? colorToRgba(seriesColor, 0.15) // 15% opacity for a subtle fill
 					: seriesColor,
 				borderWidth: 2,
@@ -161,8 +161,7 @@
 						borderWidth: isDarkMode ? 1 : 0,
 						callbacks: {
 							label: (context: TooltipItem<SupportedChartType>) => {
-								const parsedY =
-									typeof context.parsed.y === 'number' ? context.parsed.y : 0;
+								const parsedY = typeof context.parsed.y === 'number' ? context.parsed.y : 0;
 								const value = formatValue(parsedY, config.unit);
 								return `${context.dataset.label}: ${value}`;
 							}
@@ -264,7 +263,7 @@
 			// If the chart exists, just update it.
 			chart.data.datasets.forEach((dataset, index) => {
 				if (data[index]) {
-					dataset.data = data[index].data.map(point => ({
+					dataset.data = data[index].data.map((point) => ({
 						x: point.timestamp,
 						y: point.value
 					}));
